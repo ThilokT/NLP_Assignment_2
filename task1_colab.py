@@ -262,7 +262,10 @@ def compute_forced_decoding_features(knowledge, question, candidate_answer, mode
     answer_logits = logits[0, start_pos:end_pos, :]
     answer_token_ids = input_ids[0, num_prompt_tokens:]
 
-    log_probs_all = F.log_softmax(answer_logits, dim=-1)
+    # Upcast logits to float32 for complete numerical stability in fp16
+    answer_logits_f32 = answer_logits.float()
+
+    log_probs_all = F.log_softmax(answer_logits_f32, dim=-1)
     token_log_probs = log_probs_all.gather(
         dim=-1,
         index=answer_token_ids.unsqueeze(-1)
@@ -272,9 +275,8 @@ def compute_forced_decoding_features(knowledge, question, candidate_answer, mode
     sum_log_prob  = float(token_log_probs.sum().item())
     min_log_prob  = float(token_log_probs.min().item())
 
-    probs = F.softmax(answer_logits, dim=-1)
-    log_probs_for_entropy = torch.log(probs.clamp(min=1e-10))
-    entropy_per_token = -(probs * log_probs_for_entropy).sum(dim=-1)
+    # PyTorch's native categorical entropy directly from float32 logits (avoids NaN)
+    entropy_per_token = torch.distributions.Categorical(logits=answer_logits_f32).entropy()
 
     mean_entropy = float(entropy_per_token.mean().item())
     max_entropy  = float(entropy_per_token.max().item())
@@ -331,7 +333,19 @@ TASK1_V2_CKPT = os.path.join(CKPT_DIR, "task1_v2_features.json")
 if os.path.exists(TASK1_V2_CKPT):
     with open(TASK1_V2_CKPT, "r") as f:
         task1_v2_results = json.load(f)
-    print(f"\n✓ Resuming from checkpoint: {len(task1_v2_results)}/{len(sampled_data)} already processed.")
+    
+    # Check if checkpoint from a prior run contains corrupt NaNs
+    has_nan = any(
+        math.isnan(float(r["right_answer"].get("mean_entropy", 0.0))) or
+        math.isnan(float(r["hallucinated_answer"].get("mean_entropy", 0.0)))
+        for r in task1_v2_results.values()
+    )
+    if has_nan:
+        print("\n⚠ Detected NaN values in existing checkpoint from previous run.")
+        print("  Invalidating cache and re-running forced decoding with float32 Categorical entropy...")
+        task1_v2_results = {}
+    else:
+        print(f"\n✓ Resuming from checkpoint: {len(task1_v2_results)}/{len(sampled_data)} already processed.")
 else:
     task1_v2_results = {}
     print(f"\nStarting fresh forced decoding for {len(sampled_data)} QA pairs...")
@@ -422,7 +436,7 @@ def evaluate_feature(results_dict, sample_ids, feat_key, invert=False):
             pairwise_correct.append(0.0)
 
     labels = np.array(labels)
-    scores = np.array(scores)
+    scores = np.nan_to_num(np.array(scores, dtype=np.float64), nan=0.0, posinf=1e6, neginf=-1e6)
     auc_pr = float(average_precision_score(labels, scores))
     pairwise_acc = float(np.mean(pairwise_correct))
 
@@ -447,10 +461,10 @@ test_ent    = test_eval_results["mean_entropy"]["scores"]
 test_neg_lp_std = test_neg_lp.std() if test_neg_lp.std() > 0 else 1.0
 test_ent_std    = test_ent.std() if test_ent.std() > 0 else 1.0
 
-test_comb_z = (
+test_comb_z = np.nan_to_num((
     (test_neg_lp - test_neg_lp.mean()) / test_neg_lp_std +
     (test_ent - test_ent.mean()) / test_ent_std
-) / 2.0
+) / 2.0, nan=0.0)
 
 auc_pr_combined_test = float(average_precision_score(test_eval_results["neg_mean_log_prob"]["labels"], test_comb_z))
 
