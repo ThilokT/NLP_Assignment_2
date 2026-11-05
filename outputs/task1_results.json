@@ -1,0 +1,23 @@
+{
+  "model": "google/gemma-2-2b-it",
+  "dataset": "HaluEval QA (Li et al., 2023)",
+  "sample_size": 400,
+  "random_seed": 42,
+  "test_size": 80,
+  "test_scoring_instances": 160,
+  "metrics": {
+    "AUC-PR (neg_log_prob)": 0.3378,
+    "AUC-PR (entropy)": 0.5081,
+    "AUC-PR (combined_z)": 0.3865
+  },
+  "train_reference_metrics": {
+    "AUC-PR (neg_log_prob)": 0.3376,
+    "AUC-PR (entropy)": 0.4998
+  },
+  "feature_statistics": {
+    "test_neg_logprob_mean": 5.0622,
+    "test_neg_logprob_std": 3.761,
+    "test_entropy_mean": 0.9598,
+    "test_entropy_std": 0.5654
+  }
+}

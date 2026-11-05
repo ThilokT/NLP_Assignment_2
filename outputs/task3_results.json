@@ -1,0 +1,55 @@
+{
+  "split_seed": 42,
+  "train_questions": 320,
+  "test_questions": 80,
+  "train_instances": 640,
+  "test_instances": 160,
+  "features": [
+    "mean_log_prob",
+    "mean_entropy",
+    "bertscore_inconsistency",
+    "nli_contradiction"
+  ],
+  "meta_classifier": "StandardScaler + LogisticRegression(L2), C by GroupKFold(5) CV on train, scoring=AUC-PR",
+  "best_C": 0.01,
+  "test_auc_pr": {
+    "Task 1 alone (mean entropy)": 0.5081,
+    "Task 2 alone (SelfCheck-NLI)": 0.5794,
+    "Task 1 features, LR": 0.7702,
+    "Task 2 features, LR": 0.6588,
+    "Task 3 ensemble (T1+T2, LR)": 0.7567
+  },
+  "coefficients_standardised": {
+    "mean_log_prob": 0.7155,
+    "nli_contradiction": 0.1061,
+    "bertscore_inconsistency": -0.0936,
+    "mean_entropy": 0.0484
+  },
+  "ablation": [
+    {
+      "Feature set": "All minus mean_log_prob",
+      "CV AUC-PR (train)": 0.5826,
+      "Test AUC-PR": 0.6524
+    },
+    {
+      "Feature set": "All minus mean_entropy",
+      "CV AUC-PR (train)": 0.7431,
+      "Test AUC-PR": 0.7651
+    },
+    {
+      "Feature set": "All minus bertscore_inconsistency",
+      "CV AUC-PR (train)": 0.7305,
+      "Test AUC-PR": 0.777
+    },
+    {
+      "Feature set": "All minus nli_contradiction",
+      "CV AUC-PR (train)": 0.7344,
+      "Test AUC-PR": 0.77
+    },
+    {
+      "Feature set": "Extended (+ BERTScore-max, NLI+ctx)",
+      "CV AUC-PR (train)": 0.7421,
+      "Test AUC-PR": 0.8549
+    }
+  ]
+}

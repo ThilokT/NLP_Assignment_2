@@ -1,0 +1,932 @@
+NLP CS60075 Assignment II — Datasets
+How to read this document.Every dataset used anywhere across the 11 projects has one entry here: where to
+get it, its exact file/field format, its official splits (or how to construct one if it has none), any preprocessing you
+must do before using it, and – separately for every task that uses it – exactly how it is meant to be used in that
+task. A dataset reused by more than one project (e.g. UD English EWT, used in Projects 2, 3, and 5) is
+documented in full only once, at its first appearance; every later reuse is a short entry that points back to that first
+entry and states only what is genuinely different about how the later project uses the same file. Section numbers
+below match the “companion Datasets document, SectionN” references already given in the Projects document.
+1 Project 1 Datasets: N-gram LM, Smoothing, and Neural LM Repro-
+duction
+Datasets 1.1–1.3 below are the threeassignabledatasets – your group works with whichever one you are assigned,
+using it for all three tasks. Dataset 1.B (BLiMP) is a separate, shared bonus check that every group runs
+identically, regardless of which of 1.1–1.3 they were assigned.
+Dataset 1.1 — WikiT ext-2
+Source
+https://huggingface.co/datasets/Salesforce/wikitext, configurationwikitext-2-raw-v1. Load with
+load dataset("Salesforce/wikitext", "wikitext-2-raw-v1"). License: CC-BY-SA-3.0.
+Format
+A single text column. Each example is one line of raw Wikipedia article text as it appears in the article, including
+section-heading lines (wrapped in= =) and blank lines separating articles.
+Field Type Meaning
+textstring One line of raw article text, a heading line, or an empty string (article separator).
+Splits
+Split Size Notes
+train≈2.09M tokens Use for all training in Tasks 1–3.
+validation≈218K tokens Hyperparameter tuning only (k,λ, checkpoint selection). Never touch this for final
+numbers.
+test≈246K tokens Final reported perplexity only.
+Required Preprocessing
+1. Concatenate alltextlines within a split into one long token stream – WikiText’s lines are a storage artifact, not
+sentence boundaries.
+2. Tokenize with a punctuation-aware whitespace tokenizer and lowercase every token.
+3. Build the vocabulary fromtrainonly: keep the 30,000 most frequent tokens; map every other token to<UNK>.
+Tokens occurring<2 times in train also map to<UNK>.
+T ask 1 use:If assigned this dataset: train n-gram count tables ontrain; tune smoothing hyperparameters on
+validation; report final perplexity ontest.
+T ask 2 use:If assigned this dataset: train the A WD-LSTM ontrain; usevalidationfor checkpoint selection if
+deviating from a fixed epoch count; report final perplexity ontest.
+T ask 3 use:If assigned this dataset: no additional training – reuse the Task 1/2 models. Usevalidationonly to
+tuneλ; report final perplexity ontest.
+Dataset 1.2 — DailyDialog
+Source
+https://huggingface.co/datasets/daily_dialog. Load withload dataset("daily dialog").
+Format
+Each example is one multi-turn dialogue.
+1
+Field Type Meaning
+dialoglist[string] The utterances of the dialogue, in speaker-alternating order.
+actlist[int] Dialogue-act label per utterance.Not used in this project.
+emotionlist[int] Emotion label per utterance.Not used in this project.
+Splits
+Split Size Notes
+train11,118 dialogues Use for all training in Tasks 1–3.
+validation1,000 dialogues Hyperparameter tuning only.
+test1,000 dialogues Final reported perplexity only.
+Required Preprocessing
+1. For every dialogue in each split, join thedialoglist into one document: concatenate utterances in order, separated
+by a single space – do not insert speaker tags; your model is never trained with any such tokens.
+2. Tokenize/lowercase with the same convention as Dataset 1.1, but build the vocabularyfrom this dataset’s own
+trainsplit– unlike a cross-dataset evaluation setup, each assignable dataset here is self-contained, so
+DailyDialog’s vocabulary should come from DailyDialog, not from WikiText-2.
+T ask 1 use:If assigned this dataset: train n-gram count tables ontrain; tune smoothing hyperparameters on
+validation; report final perplexity ontest.
+T ask 2 use:If assigned this dataset: train the A WD-LSTM ontrain; usevalidationfor checkpoint selection;
+report final perplexity ontest.
+T ask 3 use:If assigned this dataset: no additional training – reuse the Task 1/2 models. Usevalidationonly to
+tuneλ; report final perplexity ontest.
+Dataset 1.3 — Gutenberg (NL TK)
+Source
+Bundled with NLTK:nltk.download(’gutenberg’), thennltk.corpus.gutenberg. A small collection of 18 complete
+public-domain English texts (e.g. Austen’sEmma, Melville’sMoby Dick, several Shakespeare plays),≈2.6M words to-
+tal.
+Format
+nltk.corpus.gutenberg.raw(fileid)returns the full raw text of one work;nltk.corpus.gutenberg.fileids()lists
+all 18 file identifiers (e.g.austen-emma.txt).
+Field Type Meaning
+(no tabular fields — each item is one complete literary text, not a structured record)
+Splits
+Split Size Notes
+all 18 texts≈2.6M words No official split; construct your own bywhole file, not by token position (next column).
+Required Preprocessing
+1. Split by file, not by concatenating everything and cutting at a token count: shuffle the 18 file IDs once with a fixed
+seed, and assign roughly 80% offilesto train, 10% to validation, 10% to test. Splitting by whole file (rather than
+slicing one continuous stream) avoids near-duplicate context leaking across splits, since different chapters of the
+same novel are highly self-similar in vocabulary and style.
+2. Concatenate the raw text of each split’s assigned files into one stream; tokenize/lowercase with the same
+convention as Dataset 1.1; build the vocabulary from this dataset’s own train split.
+3. Gutenberg’s 19th-century prose includes archaic spelling and punctuation conventions (e.g. long dashes, unusual
+capitalization) – do not silently strip these as “errors”; treat them as ordinary tokens, the same as any other word.
+T ask 1 use:If assigned this dataset: train n-gram count tables on your constructed train split; tune smoothing
+hyperparameters on validation; report final perplexity on test.
+T ask 2 use:If assigned this dataset: train the A WD-LSTM on your constructed train split; use validation for
+checkpoint selection; report final perplexity on test.
+T ask 3 use:If assigned this dataset: no additional training – reuse the Task 1/2 models. Use validation only to
+tuneλ; report final perplexity on test.
+2
+Dataset 1.B (Bonus, shared across every group) — BLiMP
+Source
+https://huggingface.co/datasets/nyu-mll/blimp(Warstadt et al., 2020). Load with
+load dataset("nyu-mll/blimp", "<paradigm name>")– BLiMP is 67 separate paradigm configs, so each se-
+lected paradigm is loaded as its own dataset object.
+Format
+Each example is oneminimal pair: a grammatical sentence and an ungrammatical sentence differing by one targeted
+phenomenon.
+Field Type Meaning
+sentence goodstring The grammatical sentence.
+sentence badstring The minimally-different ungrammatical sentence.
+fieldstring Broad category (morphology,syntax,semantics).
+UIDstring The specific paradigm name (e.g.wh island).
+Splits
+One split per paradigm, 1,000 pairs each, no train/validation/test division – a pure evaluation benchmark. This
+dataset isnot tied to your group’s assigned dataset above– every group evaluates on BLiMP identically, regard-
+less of whether they were assigned WikiText-2, DailyDialog, or Gutenberg for Datasets 1.1–1.3.
+Required Preprocessing
+1. Select 8–10 paradigms spanning all threefieldcategories – not clustered in one. A reasonable starting set:
+anaphor gender agreement,determiner noun agreement 1(morphology);wh island,npi present 1(syntax);
+principle A domain 1,drop argument(semantics) – add 2–4 more of your choosing to reach 8–10, and use the
+identical selection across Tasks 1, 2, and 3.
+2. Tokenize both sentences with the identical tokenizer/vocabulary as whichever dataset your group was assigned
+(1.1, 1.2, or 1.3), mapping OOV to<UNK>.
+3.Length normalization:always divide each sentence’s total log-probability by its own token count before
+comparing the pair.
+T ask 1 use:For your best smoothing variant, compute length-normalized log-probability of both sentences per
+pair; accuracy = fraction where the model preferssentence good.
+T ask 2 use:Identical protocol to Task 1, applied to the trained A WD-LSTM.
+T ask 3 use:Identical protocol to Tasks 1–2, applied to the Task 3 hybrid’s interpolated probabilities.
+2 Project 2 Datasets: Statistical vs. Neural Sequence Labeling
+Dataset 2.1 — UD English EWT
+Source
+https://huggingface.co/datasets/universal_dependencies, configurationen ewt. Load with
+load dataset("universal dependencies", "en ewt"). This treebank’s schema is reused, unchanged, by Projects 4
+and 5 – documented fully here once.
+Format
+Each example is one sentence in CoNLL-U format: per-token POS and dependency-parse annotation (only the POS
+fields are needed for this project; the dependency fields become relevant when this same schema is reused in Projects
+4–5).
+Field Type Meaning
+tokenslist[string] The raw word forms of the sentence, in order.
+uposlist[int] Universal POS tag per token (17-tag set) – the label used in this project.
+headlist[string] Index of each token’s syntactic head. Used in Projects 4–5, not here.
+deprellist[string] Dependency relation to that head. Used in Projects 4–5, not here.
+Splits
+Split Size Notes
+train≈12,500 sentences Train the HMM/BiLSTM-CRF here.
+validation≈2,000 sentences Early stopping / hyperparameter selection (Task 2).
+test≈2,000 sentences Final reported accuracy only.
+3
+Required Preprocessing
+1. Use thetokens/uposfields as given – do not re-tokenize.
+2. Map integeruposcodes to their 17 string tag names using the dataset’s ownClassLabelfeature
+(dataset.features[’upos’].feature.names).
+T ask 1 use:If assigned this dataset: train the HMM’s transition/emission tables ontrain; evaluate accuracy on
+test.
+T ask 2 use:If assigned this dataset: train the BiLSTM-CRF ontrain, usingvalidationfor early stopping;
+evaluate ontest.
+T ask 3 use:If assigned this dataset: retrain the hybrid ontrain; evaluate ontest.
+Dataset 2.2 — UD English GUM
+Source
+https://huggingface.co/datasets/universal_dependencies, configurationen gum. Load with
+load dataset("universal dependencies", "en gum"). Schema reused, unchanged, by Project 4.
+Format
+Identical CoNLL-U schema to Dataset 2.1 – same annotation scheme, different source genres (academic writing, fiction,
+spoken transcripts, how-to guides, rather than EWT’s web text).
+Splits
+Split Size Notes
+train≈2,300 sentences Train here (this dataset is fully self-contained, like Dataset 2.1 – it is not an
+evaluation-only add-on).
+validation≈780 sentences Early stopping / hyperparameter selection (Task 2).
+test≈780 sentences Final reported accuracy only.
+Required Preprocessing
+1. Apply the identicaluposlabel mapping used for Dataset 2.1 (Universal POS tags are shared across all UD
+treebanks).
+T ask 1 use:If assigned this dataset: train the HMM ontrain; evaluate accuracy ontest.
+T ask 2 use:If assigned this dataset: train the BiLSTM-CRF ontrain, usingvalidationfor early stopping;
+evaluate ontest.
+T ask 3 use:If assigned this dataset: retrain the hybrid ontrain; evaluate ontest.
+Dataset 2.3 — CoNLL-2003
+Source
+https://huggingface.co/datasets/eriktks/conll2003. Load withload dataset("eriktks/conll2003"). Schema
+reused, unchanged, by Project 9.
+Format
+Each example is one sentence with per-token named-entity tags in IOB2 format.
+Field Type Meaning
+tokenslist[string] The raw word forms of the sentence, in order.
+ner tagslist[int] IOB2 entity tag per token, 9 classes:O,B-/I-PER,B-/I-ORG,B-/I-LOC,B-/I-MISC.
+pos tagslist[int] Penn-Treebank-style POS tag per token.Not used in this project.
+Splits
+Split Size Notes
+train14,041 sentences Train here.
+validation3,250 sentences Hyperparameter/checkpoint selection (Task 2).
+test3,453 sentences Final reported entity-level F1 only.
+Required Preprocessing
+1. Map integerner tagsto their 9 string labels via the dataset’s ownClassLabelfeature.
+2. Entity-level F1 (not token-level accuracy) requires scoring whole predicted spans against whole gold spans – use
+seqevalrather than hand-rolling span-matching logic.
+T ask 1 use:If assigned this dataset: your project becomes a named-entity-recognition task rather than POS
+4
+tagging. Train the HMM ontrainover the 9 NER tags; evaluate entity-level F1 ontest.
+T ask 2 use:If assigned this dataset: train the BiLSTM-CRF ontrain; evaluate entity-level F1 ontest.
+T ask 3 use:If assigned this dataset: retrain the hybrid ontrain; evaluate entity-level F1 ontest.
+3 Project 3 Datasets: From CKY to Neural Grammar Induction
+All three datasets below come from the same underlying source (the NLTK Penn Treebank sample) split into three
+disjoint partitions, so that each group gets its own independent set of gold trees. The construction procedure is
+described once, under Partition A; Partitions B and C follow the identical procedure with a different third of the
+data.
+Dataset 3.1 — Penn T reebank, Partition A
+Source
+Bundled with NLTK:nltk.download(’treebank’), thennltk.corpus.treebank. This is the freely-redistributable
+10% sample of the full (licensed) Penn Treebank, 3,914 sentences total, with full gold constituency parses.
+Format
+Each example is one sentence’s full constituency parse, in Penn Treebank bracket notation, e.g.(S (NP (DT the) (NN
+dog)) (VP (VBZ runs))).nltk.corpus.treebank.parsed sents()returns these already parsed into NLTKTreeob-
+jects.
+Splits
+Split Size Notes
+Partition A /train≈1,043 sentences Roughly 80% of this partition’s third.
+Partition A /validation≈130 sentences Roughly 10%.
+Partition A /test≈131 sentences Roughly 10%.
+Required Preprocessing
+1.Construct all three partitions with one shared procedure(do this once; every group in this project should
+use the identical procedure with the identical seed, so partitions are reproducible and disjoint): shuffle all 3,914
+sentence indices once with a fixed seed (e.g.numpy.random.seed(42)), then cut the shuffled list into three equal
+thirds – indices [0:1305) = Partition A, [1305:2610) = Partition B, [2610:3914) = Partition C.
+2. Within Partition A, further split 80/10/10 into train/validation/test (a second, independent shuffle within the
+partition, same fixed seed) – save all resulting sentence-index lists to a file so the exact same split is reused across
+Tasks 1 and 3.
+3. Strip functional tags and trace indices from non-terminal labels (e.g. treatNP-SBJ-1as plainNP).
+T ask 1 use:If assigned this partition: train the CKY+PCFG pipeline on Partition A’s train trees; evaluate
+bracketing F1 on Partition A’s test trees.
+T ask 2 use:If assigned this partition: train the compound PCFG unsupervised on Partition A’s train-split
+sentences only(trees stripped); evaluate the induced grammar’s bracketing F1 against Partition A’s gold test trees.
+T ask 3 use:If assigned this partition: train the supervised neural PCFG on Partition A’s train trees; evaluate
+bracketing F1 on Partition A’s test trees.
+Dataset 3.2 — Penn T reebank, Partition B
+Source, Format, Splits, Preprocessing
+Identical to Dataset 3.1’s construction procedure (Section 3) – not repeated here. This is the second third of the same
+shuffled split (indices [1305:2610)), further divided 80/10/10 into its own train/validation/test.
+T ask 1 use:If assigned this partition: train the CKY+PCFG pipeline on Partition B’s train trees; evaluate
+bracketing F1 on Partition B’s test trees.
+T ask 2 use:If assigned this partition: train the compound PCFG unsupervised on Partition B’s train-split
+sentences only; evaluate against Partition B’s gold test trees.
+T ask 3 use:If assigned this partition: train the supervised neural PCFG on Partition B’s train trees; evaluate on
+Partition B’s test trees.
+5
+Dataset 3.3 — Penn T reebank, Partition C
+Source, Format, Splits, Preprocessing
+Identical to Dataset 3.1’s construction procedure (Section 3) – not repeated here. This is the remaining third of the
+same shuffled split (indices [2610:3914)), further divided 80/10/10 into its own train/validation/test.
+T ask 1 use:If assigned this partition: train the CKY+PCFG pipeline on Partition C’s train trees; evaluate
+bracketing F1 on Partition C’s test trees.
+T ask 2 use:If assigned this partition: train the compound PCFG unsupervised on Partition C’s train-split
+sentences only; evaluate against Partition C’s gold test trees.
+T ask 3 use:If assigned this partition: train the supervised neural PCFG on Partition C’s train trees; evaluate on
+Partition C’s test trees.
+4 Project 4 Datasets: Extractive vs. Abstractive Text Summarization
+Dataset 4.1 — CNN/DailyMail (3.0.0)
+Source
+https://huggingface.co/datasets/abisee/cnn_dailymail, configuration3.0.0. Load with
+load dataset("abisee/cnn dailymail", "3.0.0").
+Format
+Each example is one news article paired with a human-written, multi-sentence summary (the original dataset calls this
+fieldhighlights) that has relatively high overlap with the source – many summary sentences are close paraphrases of
+individual article sentences, which is exactly why extractive selection is a reasonable strategy on this dataset.
+Field Type Meaning
+articlestring The full news article text.
+highlightsstring The gold summary: several sentences, separated by newlines within the string.
+idstring Article identifier. Not a modeling feature.
+Splits
+Split Size Notes
+train≈287,000 articles Fit TF-IDF/IDF statistics and any tuned thresholds here.
+validation≈13,000 articles Tunek(Task 1), hyperparameters (Task 2), andm(Task 3) here.
+test≈11,000 articles Final reported metrics only.
+Required Preprocessing
+1. Sentence-splitarticlewith a standard sentence tokenizer (e.g.nltk.sent tokenizeor spaCy’s sentencizer) – this
+is the unit both TextRank/LexRank and ROUGE operate over.
+2. Splithighlightson its internal newlines to recover the gold summary as a list of sentences (needed for computing
+extractive density and compression ratio against a multi-sentence reference).
+3. Some articles retain source boilerplate (e.g. a leading(CNN) --byline marker) – strip this before sentence-splitting,
+or it can end up selected as a spurious high-centrality “sentence” by TextRank/LexRank.
+T ask 1 use:If assigned this dataset: build the TF-IDF sentence graph fromtrain; tunek(and LexRank’s
+edge-weight cutoff) onvalidation; evaluate ontest.
+T ask 2 use:If assigned this dataset: train the pointer-generator ontrain(50k-word vocabulary built fromtrain
+only); evaluate ontestwith Task 1’s exact metrics.
+T ask 3 use:If assigned this dataset: tunemonvalidation; run Task 1’s extractor into Task 2’s trained model on
+test; evaluate ROUGE and the factual-consistency proxy against Task 1 and Task 2.
+Dataset 4.2 — XSum
+Source
+https://huggingface.co/datasets/EdinburghNLP/xsum. Load withload dataset("EdinburghNLP/xsum").
+Format
+Each example is one BBC article paired with a single-sentence, professionally-written summary that isgenuinelyab-
+stractive: it is written to be a one-line introduction to the story, not a compressed restatement of any one article sen-
+tence, so it typically shares very few exact words with the source. This makes XSum a meaningfully harder setting for
+Task 1’s extractive approach than Dataset 4.1 – expect lower ROUGE for TextRank/LexRank here, and treat that as
+6
+an expected property of the dataset, not a bug in your implementation.
+Field Type Meaning
+documentstring The full article text.
+summarystring The gold summary: exactly one sentence.
+idstring Article identifier. Not a modeling feature.
+Splits
+Split Size Notes
+train≈204,000 articles Fit TF-IDF/IDF statistics here.
+validation≈11,000 articles Tunek, hyperparameters, andmhere – because the gold summary is only one sen-
+tence, expect the bestkfound on this split to be small (possiblyk=1).
+test≈11,000 articles Final reported metrics only.
+Required Preprocessing
+1. Sentence-splitdocumentthe same way as Dataset 4.1.
+2.summaryis already a single sentence – no newline-splitting is needed for the gold reference here, unlike Dataset 4.1.
+T ask 1 use:If assigned this dataset: build the TF-IDF sentence graph fromtrain; tunekonvalidation;
+evaluate ontest.
+T ask 2 use:If assigned this dataset: train the pointer-generator ontrain; evaluate ontestwith Task 1’s exact
+metrics.
+T ask 3 use:If assigned this dataset: tunemonvalidation; run Task 1’s extractor into Task 2’s trained model on
+test; evaluate ROUGE and the factual-consistency proxy against Task 1 and Task 2, and discuss whether the
+pipeline helps less here than on a high-overlap dataset, given XSum’s low source overlap.
+Dataset 4.3 — SAMSum
+Source
+https://huggingface.co/datasets/knkarthick/samsum(a parquet-based mirror –use this one, not the original
+Samsung/samsumrepository, whose legacy loading script breaks under recent versions of thedatasetslibrary). Load
+withload dataset("knkarthick/samsum").License: CC-BY-NC-ND-4.0– non-commercial use only, and no dis-
+tribution of modified versions of the dataset itself; ordinary coursework use (training/evaluating a model, reporting
+results) is fine, but do not redistribute a modified copy of the dataset itself.
+Format
+Each example is one short, messenger-style dialogue between (usually) two speakers, paired with a third-person
+natural-language summary (e.g. “Amanda baked cookies and will bring some to Jerry tomorrow.”). Unlike Datasets
+4.1–4.2, the source is conversational and multi-speaker rather than a single-author article.
+Field Type Meaning
+dialoguestring The full conversation: one turn per line, each line prefixed with a speaker name (e.g.Amanda: I
+baked cookies.), separated by newlines.
+summarystring A short, third-person summary of the conversation.
+idstring Dialogue identifier. Not a modeling feature.
+Splits
+Split Size Notes
+train14,732 dialogues Fit TF-IDF/IDF statistics here.
+validation818 dialogues Tunek, hyperparameters, andmhere.
+test819 dialogues Final reported metrics only.
+Required Preprocessing
+1. As Project 4’s Task 1 states directly: treat eachutterance(one speaker turn) as the selection unit here, not a
+sentence – splitdialogueon its internal newlines to recover the list of individual turns.
+2. Keep each turn’s speaker-name prefix attached to that turn as part of the unit (do not strip it) – a selected turn
+likeAmanda: I baked cookies.needs to keep “Amanda” attached for the extractive summary to remain
+interpretable as who said what; stripping speaker names would silently discard information the gold summaries
+themselves rely on (they are written in third person, explicitly naming speakers).
+3.summaryis already plain prose (not turn-separated) – use it as-is for both training (Task 2) and ROUGE scoring
+7
+(all three tasks).
+T ask 1 use:If assigned this dataset: build the TF-IDF turn-level graph fromtrain; tunekonvalidation;
+evaluate ontest.
+T ask 2 use:If assigned this dataset: train the pointer-generator ontrain(treating the newline-joined dialogue as
+the source sequence); evaluate ontestwith Task 1’s exact metrics.
+T ask 3 use:If assigned this dataset: tunemonvalidation; run Task 1’s extractor into Task 2’s trained model on
+test; evaluate ROUGE and the factual-consistency proxy against Task 1 and Task 2, and discuss whether
+extract-then-abstract behaves differently on conversational, multi-speaker input than on single-author articles.
+5 Project 5 Datasets: From Static to Contextual – Distributional Se-
+mantics and What’s Inside BERT
+Datasets 5.1–5.3 below are the three assignable options (each a UD treebank, supplying both raw text and gold
+dependency trees). Dataset 5.B (WordSim-353 + Google analogy set) is a separate, shared bonus check every group
+runs identically.
+Dataset 5.1 — UD English EWT
+Source, Format, Splits, Preprocessing
+Identical to Dataset 2.1 (Section 2) – not repeated here. This project uses both the rawtokens(for building word vec-
+tors, Tasks 1 and 3) and theheadfield (for Task 2’s structural-probe gold distances/depths) – the full schema already
+documented in Section 2.
+T ask 1 use:If assigned this dataset: build the word-word co-occurrence matrix and PPMI+SVD vectors from this
+dataset’s train-split sentences (raw words only).
+T ask 2 use:If assigned this dataset: train/evaluate the structural probe ontrain/test, using gold tree-distance
+and tree-depth computed fromhead.
+T ask 3 use:If assigned this dataset: extract BERT-derived static vectors from this dataset’s train-split sentences,
+using the layer identified in Task 2.
+Dataset 5.2 — UD English GUM
+Source, Format, Splits, Preprocessing
+Identical to Dataset 2.2 (Section 2) – not repeated here. As Dataset 5.1, but for GUM – both raw text and gold de-
+pendency annotation from the schema in Section 2.
+T ask 1 use:If assigned this dataset: build the word-word co-occurrence matrix and PPMI+SVD vectors from this
+dataset’s train-split sentences.
+T ask 2 use:If assigned this dataset: train/evaluate the structural probe ontrain/test.
+T ask 3 use:If assigned this dataset: extract BERT-derived static vectors from this dataset’s train-split sentences.
+Dataset 5.3 — UD English LinES
+Source
+https://huggingface.co/datasets/universal_dependencies, configurationen lines. Load with
+load dataset("universal dependencies", "en lines").
+Format
+Identical CoNLL-U schema to Dataset 2.1 (sametokens/head/deprelfields) – a third, distinct English treebank origi-
+nally built from translated/parallel text, giving a different style and vocabulary profile than EWT or GUM.
+Splits
+Split Size Notes
+train≈3,000 sentences Use for building vectors (Tasks 1, 3) and training the probe (Task 2).
+test≈900 sentences Final evaluation for Task 2’s UUAS; also the source of your 20-sentence bonus-check sam-
+ple.
+Required Preprocessing
+1. Use thetokens/head/deprelfields exactly as in Dataset 2.1.
+2. This treebank is smaller than EWT – expect your PPMI+SVD and BERT-derived vectors (Tasks 1, 3) to be built
+from noticeably less text than if trained on EWT or GUM; this is an accepted trade-off of the
+8
+one-dataset-per-group design (see the project’s Problem Statement).
+T ask 1 use:If assigned this dataset: build the word-word co-occurrence matrix and PPMI+SVD vectors from this
+dataset’s train-split sentences.
+T ask 2 use:If assigned this dataset: train/evaluate the structural probe ontrain/test.
+T ask 3 use:If assigned this dataset: extract BERT-derived static vectors from this dataset’s train-split sentences.
+Dataset 5.B (Bonus, shared across every group) — W ordSim-353 and the Google Analogy Set
+Source
+WordSim-353:https://huggingface.co/datasets/wordsim353. Google analogy set: distributed alongside the origi-
+nal word2vec release,https://github.com/tmikolov/word2vec(filequestions-words.txt).
+Format
+Two files bundled as one evaluation suite: WordSim-353 is word pairs with a human similarity judgment; the analogy
+set is 4-word analogy questions.
+Field Type Meaning
+word1,word2string The two words being judged (WordSim-353).
+similarityfloat Human-judged similarity, 0–10 scale (WordSim-353).
+line formata b c d4 strings One analogy question: “ais tobascis to ?”, gold answerd.
+Splits
+No split – both are pure evaluation sets (353 pairs,≈19,544 questions), used in full by every group regardless of which
+of Datasets 5.1–5.3 they were assigned.
+Required Preprocessing
+1. Lowercase every word to match the vocabulary casing from your assigned dataset.
+2. Drop any analogy question with an out-of-vocabulary word; report how many were dropped, since your vocabulary
+size depends on which treebank you were assigned.
+3. Compute Spearman (not Pearson) correlation for WordSim-353 – the task only needs relative ordering, not the
+human 0–10 scale matched numerically.
+T ask 1 use:Compute WordSim-353 Spearman correlation and Google-analogy accuracy for the PPMI+SVD
+vectors.
+T ask 2 use:Not used (Task 2 is evaluated with UUAS/depth-correlation instead, a structural rather than
+similarity/analogy metric).
+T ask 3 use:Compute the identical two metrics for the BERT-derived vectors, same protocol as Task 1.
+6 Project 6 Datasets: A Text Processing Pipeline for Code-Mixed, Real-
+World Text
+Datasets 6.1–6.3 below are three disjoint partitions of the same underlying SemEval SentiMix corpus, so every
+group gets a genuinely self-contained, correctly-labeled Hindi-English code-mixed sentiment dataset. Dataset 6.B
+(Dakshina) is a separate, shared resource every group uses identically for normalization.
+Dataset 6.1 — SemEval SentiMix, Partition A
+Source
+https://ritual-uh.github.io/sentimix2020/(original shared-task release) orhttps://huggingface.co/datasets/
+festvox/sentimix_hi_en(mirror –verify current field names against whichever source you use). Combine the
+shared task’s original train+validation+test into one pool of≈20,000 tweets before partitioning (next column).
+Format
+Each example is one code-mixed tweet, tokenized, with a word-level language tag on every token and a single senti-
+ment label for the whole tweet.
+Field Type Meaning
+tokenslist[string] The tweet’s words, already tokenized (mixed Hindi/English, Roman script throughout).
+lang taglist[string] Per-token language tag:EN,HI, orUNIV.
+sentimentstring Tweet-level label:positive,negative, orneutral.
+9
+Splits
+Split Size Notes
+Partition A /train≈5,330 tweets Roughly 80% of this partition’s third of the combined pool.
+Partition A /validation≈670 tweets Roughly 10%.
+Partition A /test≈670 tweets Roughly 10%.
+Required Preprocessing
+1.Construct all three partitions with one shared procedure(do this once; use the identical seed across the
+whole class): combine the original train+validation+test into one pool, shuffle once with a fixed seed, cut into
+three equal thirds – Partition A, B, C – then split each third 80/10/10 into its own train/validation/test.
+2. Jointokenswith single spaces for the TF-IDF/MuRIL pipelines, but keep the original token list (and aligned
+lang taglist) available separately – Task 1’s LID classifier is trained per-token.
+3. Verify exact label spelling/casing against whichever copy you load, and normalize it once, consistently.
+T ask 1 use:If assigned this partition: train the LID classifier and Random Forest sentiment classifier on Partition
+A’s train split; evaluate macro-F1 on its test split.
+T ask 2 use:If assigned this partition: fine-tune MuRIL on Partition A’s train split; evaluate macro-F1 on its test
+split.
+T ask 3 use:If assigned this partition: fine-tune the LID-augmented MuRIL on Partition A’s train split; evaluate
+macro-F1 on its test split.
+Dataset 6.2 — SemEval SentiMix, Partition B
+Source, Format, Splits, Preprocessing
+Identical to Dataset 6.1’s construction procedure (Section 6) – not repeated here. The second third of the same shuf-
+fled pool, further divided 80/10/10 into its own train/validation/test.
+T ask 1 use:If assigned this partition: train the LID classifier and Random Forest on Partition B’s train split;
+evaluate macro-F1 on its test split.
+T ask 2 use:If assigned this partition: fine-tune MuRIL on Partition B’s train split; evaluate macro-F1 on its test
+split.
+T ask 3 use:If assigned this partition: fine-tune the LID-augmented MuRIL on Partition B’s train split; evaluate
+macro-F1 on its test split.
+Dataset 6.3 — SemEval SentiMix, Partition C
+Source, Format, Splits, Preprocessing
+Identical to Dataset 6.1’s construction procedure (Section 6) – not repeated here. The remaining third of the same
+shuffled pool, further divided 80/10/10 into its own train/validation/test.
+T ask 1 use:If assigned this partition: train the LID classifier and Random Forest on Partition C’s train split;
+evaluate macro-F1 on its test split.
+T ask 2 use:If assigned this partition: fine-tune MuRIL on Partition C’s train split; evaluate macro-F1 on its test
+split.
+T ask 3 use:If assigned this partition: fine-tune the LID-augmented MuRIL on Partition C’s train split; evaluate
+macro-F1 on its test split.
+Dataset 6.B (Shared resource, used identically by every group) — Dakshina (Hindi T ransliteration
+Pairs)
+Source
+https://github.com/google-research-datasets/dakshina. Use only thehi(Hindi) portion’s word-pair romaniza-
+tion lexicon (not its separate full-sentence transliteration data, which is not used here).
+Format
+Each entry pairs a native-script (Devanagari) Hindi word with one or more attested Romanized spellings, each with a
+frequency count.
+10
+Field Type Meaning
+native word string The word in Devanagari script.
+romanization(s) string(s) One or more attested Romanized spellings of that word.
+count int How many times each romanization was observed.
+Splits
+Use the full word-pair lexicon (all of Dakshina’s own splits combined) – this is a fixed, static reference dictionary, iden-
+tical for every group regardless of which SemEval partition (6.1, 6.2, or 6.3) they were assigned.
+Required Preprocessing
+1. Build a Romanized-spelling→canonical-form lookup dictionary: for each native word, treat its most frequent
+romanization as canonical, and map every other attested romanization of that word to it.
+2. This dictionary is a static rule-based lookup, never trained or fit to any group’s tweet partition, so there is no risk
+of leaking test labels into it.
+T ask 1 use:Build the normalization dictionary from this lexicon; apply it to your assigned partition’s text before
+TF-IDF feature extraction.
+T ask 2 use:Apply the same dictionary to your assigned partition’s test text at evaluation time only (the
+additional check described in Project 6’s Task 2), never during MuRIL’s raw-text training pass.
+T ask 3 use:Apply the same dictionary as part of the full preprocessing chain, alongside the LID-augmentation
+step.
+7 Project 7 Datasets: Do LLMs Know When They’re Making Things
+Up?
+Dataset 7.1 — WikiBio GPT-3 Hallucination Dataset
+Source
+https://huggingface.co/datasets/potsawee/wiki_bio_gpt3_hallucination(from the SelfCheckGPT paper, Man-
+akul et al., 2023).
+Format
+Each example is one GPT-3-generated, Wikipedia-style biography passage, split into sentences, with a human accuracy
+annotation per sentence, plus 20 independently resampled passages from the same prompt.
+Field Type Meaning
+gpt3 textstring The full generated biography passage.
+gpt3 sentenceslist[string] The passage split into individual sentences.
+annotationlist[string] Per-sentence label:accurate,minor inaccurate, ormajor inaccurate.
+gpt3 text sampleslist[string] 20 independently resampled full passages (temperature 1.0), used by SelfCheck-
+GPT.
+Splits
+Split Size Notes
+full dataset≈238 passages No official split. If assigned this dataset, build your own fixed 80/20 train/test parti-
+tion (stated seed) for Task 3’s meta-classifier; Tasks 1–2 use the full dataset directly
+(their scoring methods are formulas, not trained models).
+Required Preprocessing
+1. Binarize the 3-wayannotationlabel to 2-way for AUC-PR:accurate= negative, both
+minor inaccurate/major inaccurate= positive.
+2. Keepgpt3 sentencesandannotationindex-aligned.
+T ask 1 use:If assigned this dataset: score every sentence with mean log-probability/entropy; report AUC-PR on
+the full dataset.
+T ask 2 use:If assigned this dataset: score every sentence with SelfCheck-BERTScore/NLI against the 20
+resamples; report AUC-PR on the full dataset.
+T ask 3 use:If assigned this dataset: build your 80/20 split; train the meta-classifier on the 80%; evaluate
+AUC-PR on the held-out 20%.
+11
+Dataset 7.2 — T ruthfulQA
+Source
+https://huggingface.co/datasets/truthful_qa, configurationgeneration. Load with
+load dataset("truthful qa", "generation").
+Format
+Each example is one question designed to elicit a common misconception, with acceptable correct answers and known-
+incorrect answers.
+Field Type Meaning
+questionstring The question, often targeting a common misconception.
+correct answerslist[string] Acceptable correct answers.
+incorrect answerslist[string] Known-incorrect, plausible-sounding answers.
+categorystring Topic category (38 categories total).
+Splits
+Split Size Notes
+validation817 questions TruthfulQA’s entire usable dataset. If assigned this dataset, build your own fixed 80/20
+train/test partition for Task 3, same convention as Dataset 7.1.
+Required Preprocessing
+1. Generate one free-text answer per question with your chosen open LLM, fixed decoding configuration.
+2. Score the generated answer accurate if it matches/closely paraphrases anycorrect answersentry, inaccurate
+otherwise – state your matching method (similarity threshold, or hand-verified sample) explicitly.
+T ask 1 use:If assigned this dataset: generate an answer per question, score with log-probability/entropy; report
+AUC-PR on the full dataset.
+T ask 2 use:If assigned this dataset: generateN= 20 resamples per question; apply SelfCheck-BERTScore/NLI;
+report AUC-PR.
+T ask 3 use:If assigned this dataset: build your 80/20 split; train the meta-classifier on the 80%; evaluate
+AUC-PR on the held-out 20%.
+Dataset 7.3 — HaluEval (QA Subset)
+Source
+https://github.com/RUCAIBox/HaluEval(Li et al., 2023);confirm the exact split name for the QA subset
+against whichever mirror you use.
+Format
+Each example pairs one question with a correct answer and an LLM-generated plausible-but-wrong answer.
+Field Type Meaning
+questionstring The question (originally drawn from an existing QA dataset).
+right answerstring The correct answer.
+hallucinated answerstring An LLM-generated plausible-sounding incorrect answer.
+Splits
+Split Size Notes
+QA subset≈10,000 pairs No official split. If assigned this dataset, draw a fixed random sample for tractability if
+needed, and build your own 80/20 train/test partition for Task 3, same convention as
+Datasets 7.1–7.2.
+Required Preprocessing
+1. Scoreright answerandhallucinated answerdirectly with forced decoding (both are already given, unlike
+Datasets 7.1–7.2 where you generate an answer yourself).
+2. Treat each pair as two separate scoring instances for AUC-PR purposes.
+T ask 1 use:If assigned this dataset: score both candidate answers per pair with log-probability/entropy; report
+AUC-PR.
+T ask 2 use:If assigned this dataset: generate resamples and apply SelfCheck-BERTScore/NLI (state your exact
+resampling protocol for this dataset); report AUC-PR.
+12
+T ask 3 use:If assigned this dataset: build your 80/20 split; train the meta-classifier on the 80%; evaluate
+AUC-PR on the held-out 20%.
+8 Project 8 Datasets: Chain-of-Thought Faithfulness
+Dataset 8.1 — GSM8K
+Source
+https://huggingface.co/datasets/openai/gsm8k, configurationmain.
+Format
+Each example is one grade-school arithmetic word problem, with a worked solution ending in a final numeric answer.
+Field Type Meaning
+questionstring The word problem.
+answerstring A worked solution, final numeric answer after a####delimiter.
+Splits
+Split Size Notes
+train7,473 problems If assigned this dataset: source pool for 4-shot exemplars only, never used for training a
+model.
+test1,319 problems Samplen= 200 with a fixed seed for all evaluation in Tasks 1–3.
+Required Preprocessing
+1. Extract the gold final numeric answer by splittingansweron####.
+2. If using 4-shot prompting, draw the 4 exemplars fromtrainwith a fixed seed and reuse the same 4 for every
+question.
+3. Strip currency symbols/commas before numeric comparison.
+T ask 1 use:If assigned this dataset: samplen=200 fromtest; evaluate direct-answer accuracy (zero-shot and
+4-shot).
+T ask 2 use:If assigned this dataset: same sample; evaluate standard-CoT accuracy and all four faithfulness
+interventions.
+T ask 3 use:If assigned this dataset: same sample; evaluate the faithfulness-weighted self-consistency pipeline.
+Dataset 8.2 — BIG-Bench-Hard Subtask
+Source
+https://huggingface.co/datasets/maveriq/bigbenchhard, configuration equal to your chosen subtask (e.g.
+logical deduction five objects). If assigned this dataset, pick one subtask and use it consistently across all three
+tasks.
+Format
+Each example is one multiple-choice reasoning question with answer options embedded in the question text.
+Field Type Meaning
+inputstring The full question text, including embedded(A)/(B)/...options.
+targetstring The correct option’s text.
+Splits
+Split Size Notes
+full subtask typically 150–250 examples Samplen= 150 with a fixed seed (or use the full subtask if smaller).
+Required Preprocessing
+1. Parse the embedded options out ofinputwith a consistent regular expression.
+2. Grade by matching the model’s selected optionletteragainst the letter corresponding totarget.
+T ask 1 use:If assigned this dataset: samplen=150; evaluate direct-answer accuracy (zero-shot and 4-shot).
+T ask 2 use:If assigned this dataset: same sample; evaluate standard-CoT accuracy and all four faithfulness
+interventions.
+T ask 3 use:If assigned this dataset: same sample; evaluate the faithfulness-weighted self-consistency pipeline.
+13
+Dataset 8.3 — StrategyQA
+Source
+https://huggingface.co/datasets/wics/strategy-qa.
+Format
+Each example is a yes/no question whose reasoning steps are never stated explicitly – answering requires implicitly
+chaining multiple facts.
+Field Type Meaning
+questionstring The yes/no question (implicit multi-hop reasoning required).
+answerbool The gold yes/no answer.
+facts/decompositionlist[string] Supporting facts used to construct the question.Do not show these to the
+model at inference time.
+Splits
+Split Size Notes
+train≈2,290 questions If assigned this dataset: only source of few-shot exemplars, never used for
+training a model.
+no official test split – Samplen= 150 fromtrainwith a fixed seed, disjoint from any few-shot ex-
+emplars.
+Required Preprocessing
+1. Confirm the exact boolean encoding used by whichever mirror you load, map to a consistentYes/Nostring.
+2. Sample your evaluation set and any few-shot exemplars from disjoint index sets withintrain.
+T ask 1 use:If assigned this dataset: samplen=150 (disjoint from few-shot exemplars); evaluate direct-answer
+accuracy (zero-shot and 4-shot).
+T ask 2 use:If assigned this dataset: same sample; evaluate standard-CoT accuracy and all four faithfulness
+interventions.
+T ask 3 use:If assigned this dataset: same sample; evaluate the faithfulness-weighted self-consistency pipeline.
+9 Project 9 Datasets: Parameter-Efficient Fine-Tuning – From Hand-
+Engineered Features to LoRA
+Dataset 9.1 — CoNLL-2003 (NER)
+Source, Format, Splits, Preprocessing
+Identical to Dataset 2.3 (Section 2) – not repeated here. Used identically to Section 2’s description – same splits, same
+fields, same entity-level F1 protocol; only the models being trained on it differ (classical hand-engineered features and
+LoRA here, vs. HMM/BiLSTM-CRF in Project 2).
+T ask 1 use:If assigned this dataset: train the CRF-with-hand-crafted-features model ontrain; evaluate
+entity-level F1 ontest.
+T ask 2 use:If assigned this dataset: fine-tune LoRA-adapted BERT (every rankr) ontrain; evaluate entity-level
+F1 ontest.
+T ask 3 use:If assigned this dataset: train/evaluate the combined meta-model identically on the sametrain/test
+split.
+Dataset 9.2 — GLUE SST-2
+Source
+https://huggingface.co/datasets/nyu-mll/glue, configurationsst2.
+Format
+Each example is one short, single-sentence movie-review snippet with a binary sentiment label.
+Field Type Meaning
+sentencestring A short review snippet.
+labelint 0 = negative, 1 = positive.
+idxint Original GLUE example index. Not a modeling feature.
+14
+Splits
+Split Size Notes
+train67,349 examples Train here.
+validation872 examplesUse this as your evaluation split.GLUE’s officialtestsplit ships withlabel =
+-1(labels withheld for the public leaderboard) and is not usable locally.
+Required Preprocessing
+1. Do not attempt to evaluate ontest– check forlabel = -1after loading, which signals the label-withheld split.
+2. Sentences here are much shorter than Dataset 9.3’s full reviews – reconsider your TF-IDFn-gram range/feature
+cap accordingly and state your choice.
+T ask 1 use:If assigned this dataset: train TF-IDF + Random Forest ontrain; evaluate accuracy onvalidation.
+T ask 2 use:If assigned this dataset: fine-tune LoRA-adapted BERT (every rankr) and the full-fine-tuning
+reference ontrain; evaluate accuracy onvalidation.
+T ask 3 use:If assigned this dataset: train/evaluate the combined meta-model identically ontrain/validation.
+Dataset 9.3 — IMDB
+Source
+https://huggingface.co/datasets/stanfordnlp/imdb.
+Format
+Each example is one full-length movie review with a binary sentiment label – entire paragraphs, unlike Dataset 9.2’s
+short snippets.
+Field Type Meaning
+textstring The full review text (may include leftover<br />tags).
+labelint 0 = negative, 1 = positive.
+Splits
+Split Size Notes
+train25,000 reviews Balanced 12,500/12,500. Train here.
+test25,000 reviews Also balanced, with real labels (unlike Dataset 9.2’s) – use directly for final evaluation.
+Required Preprocessing
+1. Strip leftover<br />tags before tokenizing.
+2. For LoRA/full-fine-tuning (Task 2), truncate reviews to your transformer’s max sequence length (typically 512
+subwords) and report what fraction of reviews you had to truncate.
+T ask 1 use:If assigned this dataset: train TF-IDF + Random Forest ontrain; evaluate accuracy ontest.
+T ask 2 use:If assigned this dataset: fine-tune LoRA-adapted BERT (every rankr) and the full-fine-tuning
+reference ontrain; evaluate accuracy ontest.
+T ask 3 use:If assigned this dataset: train/evaluate the combined meta-model identically ontrain/test.
+10 Project 10 Datasets: Open-Domain Question Answering – From Lex-
+ical Retrieval to RAG
+Dataset 10.1 — rag-mini-wikipedia
+Source
+https://huggingface.co/datasets/rag-datasets/rag-mini-wikipedia. Has two configurations:text-corpus(the
+passage index) andquestion-answer(the QA pairs) – load both.
+Format
+A small, self-contained Wikipedia passage collection paired with question-answer pairs written against that same col-
+lection – every question is guaranteed answerable from a passage actually present in the index.
+15
+Field Type Meaning
+passagestring One Wikipedia passage (from thetext-corpusconfig).
+idint/string Passage identifier.
+questionstring A question (from thequestion-answerconfig).
+answerstring The gold short answer.
+Splits
+Split Size Notes
+passage corpus a few thousand passages Index this in full with both BM25 and the dense retriever – this is the
+retrieval target for all three tasks.
+QA pairs≈900–1,000 questions Use for all evaluation in Tasks 1–3.
+Required Preprocessing
+1. Build a BM25 index and a dense index over the same passage corpus, without re-chunking differently between the
+two.
+2. For extractive scoring (Task 1), match the goldanswervia SQuAD-style normalization (lowercase, strip
+articles/punctuation).
+T ask 1 use:If assigned this dataset: retrieve top-kpassages with BM25; extract an answer span heuristically;
+evaluate EM/F1 and recall@k.
+T ask 2 use:If assigned this dataset: retrieve top-kpassages with the dense retriever; generate an answer; evaluate
+EM/F1 and recall@k.
+T ask 3 use:If assigned this dataset: retrieve with the RRF-fused ranking; apply the groundedness check; evaluate
+EM/F1, recall@k, and groundedness-check accuracy.
+Dataset 10.2 — Natural Questions (Open)
+Source
+https://huggingface.co/datasets/google-research-datasets/nq_open.
+Format
+The open-domain variant of Natural Questions: question and short answer(s) only, no given passage/context – the sys-
+tem itself is responsible for finding evidence.
+Field Type Meaning
+questionstring A real, anonymized Google search query.
+answerlist[string] One or more acceptable short answer strings.
+Splits
+Split Size Notes
+train≈87,900 questions If assigned this dataset: source pool for generator few-shot exemplars only, never
+used for training a retriever/model.
+validation≈3,600 questions Sample a fixed subset (e.g.n= 300, stated seed) for all evaluation in this project.
+Required Preprocessing
+1.Build your own Wikipedia-paragraph indexcovering your sampled questions’ topics – NQ does not ship its
+own small passage index the way Dataset 10.1 does. If your group is assigned this dataset, this index is yours alone
+to build and use for all three tasks; document exactly how you built it (source dump, paragraph segmentation,
+size) in your report.
+2. Score EM/F1 by comparing againsteverystring in theanswerlist and taking the best match.
+T ask 1 use:If assigned this dataset: retrieve top-kpassages from your constructed index with BM25; extract an
+answer heuristically; evaluate EM/F1.
+T ask 2 use:If assigned this dataset: retrieve with the dense retriever over the same index; generate an answer;
+evaluate EM/F1.
+T ask 3 use:If assigned this dataset: retrieve with the RRF-fused ranking; apply the groundedness check; evaluate
+EM/F1 and groundedness-check accuracy.
+16
+Dataset 10.3 — T riviaQA (rc.nocontext)
+Source
+https://huggingface.co/datasets/mandarjoshi/trivia_qa, configurationrc.nocontext(strips the bundled evi-
+dence documents TriviaQA’s reading-comprehension setting normally provides, leaving bare question-answer pairs for
+the open-retrieval setting).
+Format
+Each example is one trivia-style question – often requiring more indirect or multi-hop reasoning than Natural Ques-
+tions’ search-query-style questions – with a gold answer and accepted alternate phrasings.
+Field Type Meaning
+questionstring A trivia-style question.
+answerdict Containsvalue(canonical gold answer) andaliases(accepted alternate phrasings).
+Splits
+Split Size Notes
+train≈78,800 questions If assigned this dataset: source pool for few-shot exemplars only, never used for
+training.
+validation≈8,800 questions Sample a fixed subset (e.g.n= 300, stated seed).
+Required Preprocessing
+1.Build your own Wikipedia-paragraph index, the same way as Dataset 10.2 – if your group is assignedthis
+dataset instead of Dataset 10.2, you will not have an NQ index to reuse, so build one from scratch covering your
+sampled TriviaQA questions’ topics, and document how.
+2. Combineanswer[’value’]and every entry inanswer[’aliases’]into one flat list of acceptable strings before
+scoring EM/F1.
+T ask 1 use:If assigned this dataset: retrieve top-kpassages with BM25 from your constructed index; extract an
+answer heuristically; evaluate EM/F1.
+T ask 2 use:If assigned this dataset: retrieve with the dense retriever; generate an answer; evaluate EM/F1.
+T ask 3 use:If assigned this dataset: retrieve with the RRF-fused ranking; apply the groundedness check; evaluate
+EM/F1 and groundedness-check accuracy.
+11 Project 11 Datasets: Metaphor Detection – Selectional-Preference
+Violation vs. Neural Token Classification
+Dataset 11.1 — VU Amsterdam Metaphor Corpus (VUA), All-POS T rack
+Source
+Official shared-task release:https://github.com/EducationalTestingService/metaphor/tree/master/
+VUA-shared-task(2018 VUA Metaphor Detection Shared Task, all-POS track). Distributed as per-token TSV/CSV
+files, organized by document and by the four source registers (news, academic, fiction, conversation) drawn from the
+BNC Baby corpus.
+Format
+Every content word in every sentence is labeled, under the MIPVU annotation protocol, as metaphorical or literal –
+this is a fullsequence labelingtask (one label per token), unlike Datasets 11.2–11.3 below, which label only a single tar-
+get verb per sentence. The shared-task release already includes gold POS tags; it doesnotinclude dependency parses
+– you will need to parse the sentences yourself for Task 1’s predicate-argument extraction.
+Field Type Meaning
+txt idstring Source document identifier (117 documents total).
+sentence idint Sentence index within the document.
+tokenstring The word form.
+posstring Gold part-of-speech tag (provided by the release).
+labelint 1 = metaphorical, 0 = literal, under the MIPVU protocol.
+genrestring One ofnews,academic,fiction,conversation.
+17
+Splits
+Split Size Notes
+train≈96 documents The shared task’s official train documents. Hold out≈15% of these documents (not indi-
+vidual tokens – whole documents, to avoid leaking a document’s vocabulary/style across the
+split) as your validation set, with a fixed seed.
+test≈21 documents The shared task’s official held-out test documents – use directly, do not re-split.(Exact
+per-document and per-token counts vary slightly by release version; confirm against the copy
+you download.)
+Required Preprocessing
+1. Group tokens back into sentences usingtxt id+sentence idbefore running a dependency parser (e.g. spaCy)
+over each sentence – Task 1’s selectional-preference computation needs subject/object relations, which this release
+does not provide directly.
+2. Split validation from trainby whole document, not by shuffling individual tokens or sentences – documents in this
+corpus are long and stylistically consistent, so a token-level random split would leak a document’s specific
+vocabulary between train and validation.
+3. Keep thegenrefield even though it is not required by any task step here – it is useful if you want to sanity-check
+whether your model’s errors cluster in a particular register in your write-up.
+T ask 1 use:If assigned this dataset: build selectional-preference profiles and tune the association-score threshold
+on train/validation; evaluate precision/recall/F1 (overall and by POS) on test.
+T ask 2 use:If assigned this dataset: train the BiLSTM sequence labeler (one label per token) on train,
+early-stopping on validation F1; evaluate on test with Task 1’s exact metrics.
+T ask 3 use:If assigned this dataset: compute the Task 1/Task 2 correlation and retrain the feature-augmented
+model on train/validation; evaluate on test, including the disagreement-subset breakdown.
+Dataset 11.2 — T roFi (T rope Finder)
+Source
+Direct file:http://www.cs.sfu.ca/ ~anoop/students/jbirke/TroFiExampleBase.txt, or the identical mirror at
+https://github.com/sfu-natlang/trofi-metaphor-data/blob/master/TroFiExampleBase.txt. A single plain-text
+file – no account, form, or installer needed.License: GPL; if you use this data, cite Birke & Sarkar,Clustering Ap-
+proach for the Nearly Unsupervised Recognition of Nonliteral Language, EACL 2006, and Birke & Sarkar,Active Learn-
+ing for the Identification of Nonliteral Language, NAACL-HLT 2007 workshop, as required by the release.
+Format
+Built around 50 fixed, ambiguous English verbs (e.g.absorb,grasp,strike– the full list of 50 is on the source page),
+organized as text blocks per verb, each split into anonliteral clusterand aliteral clustersection. Each line inside a
+cluster has three tab-separated columns: a WSJ source identifier, an annotation-status label, and the tokenized sen-
+tence (ending in./.).This is not the cleansentence/verb idx/labeltable a typical dataset release would
+give you– it needs to be parsed out of this block structure yourself.
+Field Type Meaning
+WSJ id string Source sentence identifier, e.g.wsj02:2251(file number : line number, across 86 WSJ
+source files).
+annotation label string One ofL(Literal),N(Nonliteral), orU(Unannotated) – see Required Preprocessing.
+tokenized sentence string The WSJ sentence, already tokenized, ending in./.
+Splits
+No official train/validation/test split; construct your own.First, keep onlyL- andN-labeled lines – discard everyU
+(unannotated) line, since there is no ground truth for those.Then, pool the remaining labeled sentences across all 50
+verbs, shuffle once with a fixed seed, and take 80%/10%/10% as train/validation/test bysentence(not by verb), so
+every split contains most/all 50 verbs rather than a split where some verbs never appear in training.
+Required Preprocessing
+1. Parse the raw file into individual records: for each verb block (delimited by header lines like***absorb***), read
+the nonliteral and literal cluster sub-sections separately, recording per line the verb (from the block header), the
+WSJ id, the L/N/U label, and the tokenized sentence.
+2.Discard everyU-labeled line before splitting– onlyLandNlines have a real gold label (N→label
+1/metaphorical,L→label 0/literal).
+3. Locate the target verb’s token index within each sentence by matching the verb string, allowing for simple inflected
+18
+forms (e.g.absorbs,absorbed) against the block header’s base form.
+4. POS-tag and dependency-parse each sentence yourself – this release provides neither.
+5.Deviation from standard practice – state this explicitly in your report:most published work on TroFi
+(e.g. Gao et al., MelBERT) evaluates it withk-fold cross-validation rather than a single fixed split, precisely
+because the dataset is small and organized per-verb. This project instead uses a single fixed 80/10/10 split, for
+consistency with how every other dataset in this document is handled. Results here are thereforenotdirectly
+comparable to published TroFi numbers, and this should be stated plainly in your report rather than presented as
+a like-for-like comparison.
+T ask 1 use:If assigned this dataset: build selectional-preference profiles and tune the threshold on
+train/validation (scoring only each sentence’s target verb); evaluate precision/recall/F1 on test.
+T ask 2 use:If assigned this dataset: train the target-word-only classifier (not full sequence labeling) on train,
+early-stopping on validation F1; evaluate on test with Task 1’s exact metrics.
+T ask 3 use:If assigned this dataset: compute the Task 1/Task 2 correlation and retrain the feature-augmented
+model; evaluate on test, including the disagreement-subset breakdown.
+Dataset 11.3 — MOH-X
+Source
+No official standalone release page.The cleanest source is the pre-formatted bundle distributed
+by Gao et al. alongside their paper’s code: Google Drive linkhttps://drive.google.com/file/d/
+1-v_sUlupDrKq8ERlnh5RwdI7Pyk-6cxn/view?usp=sharing(linked fromhttps://github.com/gao-g/
+metaphor-in-context), which bundles pre-formatted versions of MOH-X, TroFi, and VUA together – download
+and unzip this once as a group; there is no pip/CLI installer for it. If that link ever goes stale, the MelBERT reposi-
+tory links to an equivalent bundle.
+Format
+A small, curated subset of the original Mohammad et al. MOH dataset, restricted to sentences with a single, unam-
+biguous target verb. The bundle above has already been cleaned into a simple per-example format (unlike Dataset
+11.2’s raw block structure) –exact column names may vary slightly by release version, since this is an un-
+official convenience bundle rather than a versioned dataset release; inspect the first few rows after un-
+zipping and adjust your loader to match.The description below gives the logical fields you should end up with
+regardless of the exact on-disk column names.
+Field Type Meaning
+sentence string The full sentence containing the target verb.
+verb string The target verb.
+verb idx int Token index of the target verb within the sentence.
+label int 1 = metaphorical, 0 = literal, for this one verb in this one sentence.
+Splits
+No official split (this dataset is conventionally used withk-fold cross-validation in the papers that introduced and later
+used it – see Dataset 11.2’s deviation note, which applies identically here). If assigned this dataset, construct your own
+fixed-seed 80/10/10 train/validation/test split by sentence, the same procedure as Dataset 11.2, and state the same de-
+viation from standard practice in your report.Because the full dataset is only a few hundred sentences, your
+resulting test split will be very small (on the order of a few dozen sentences) – report F1 with this sample size explic-
+itly in mind.
+Required Preprocessing
+1. Tokenize, POS-tag, and dependency-parse every sentence yourself, as with Dataset 11.2.
+2. Given the small size, consider reporting results averaged over a few different random splits (with different seeds)
+rather than a single fixed split, and note the spread across runs – a single split’s F1 here can be noisy purely from
+sample size, independent of model quality.
+T ask 1 use:If assigned this dataset: build selectional-preference profiles and tune the threshold on
+train/validation; evaluate precision/recall/F1 on test, reporting variance across at least 3 random splits given the
+small sample size.
+T ask 2 use:If assigned this dataset: train the target-word-only classifier on train, early-stopping on validation F1;
+evaluate on test with Task 1’s exact metrics and the same multi-split variance reporting.
+T ask 3 use:If assigned this dataset: compute the Task 1/Task 2 correlation and retrain the feature-augmented
+model; evaluate on test including the disagreement-subset breakdown, and discuss whether the small sample size
+makes the disagreement-subset analysis reliable at all.
+19
