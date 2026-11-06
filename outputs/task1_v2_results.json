@@ -1,0 +1,33 @@
+{
+  "task": "Task 1 (Colab): Knowledge-Conditioned Hallucination Detection",
+  "model": "google/gemma-2-2b-it",
+  "prompt_template": "Context: {knowledge}\\nQuestion: {question}\\nAnswer: ",
+  "sample_size": 400,
+  "random_seed": 42,
+  "metrics_auc_pr_test": {
+    "neg_mean_log_prob": 0.3843,
+    "mean_entropy": 0.8572,
+    "perplexity": 0.3843,
+    "neg_sum_log_prob": 0.9794,
+    "neg_min_log_prob": 0.7021,
+    "max_entropy": 0.9319,
+    "log_prob_variance": 0.4597,
+    "entropy_variance": 0.9027,
+    "answer_token_count": 0.9801,
+    "combined_z": 0.5946
+  },
+  "metrics_pairwise_accuracy_test": {
+    "neg_mean_log_prob": 0.3125,
+    "mean_entropy": 0.9,
+    "perplexity": 0.3125,
+    "neg_sum_log_prob": 0.9875,
+    "neg_min_log_prob": 0.75,
+    "max_entropy": 0.9563,
+    "log_prob_variance": 0.525,
+    "entropy_variance": 0.95,
+    "answer_token_count": 0.9875,
+    "combined_z": 0.675
+  },
+  "checkpoint_file": "/kaggle/working/NLP_Assignment_2/checkpoints/task1_v2_features.json",
+  "plot_file": "/kaggle/working/NLP_Assignment_2/outputs/task1_v2_plots.png"
+}

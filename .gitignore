@@ -11,15 +11,17 @@ __pycache__/
 .ipynb_checkpoints/
 
 # Secrets and credentials
+token
 token.txt
 *.env
 .env*
 *.pem
 *.key
+BEGINNER_GUIDE_HALLEVAL_DETECTION.md
 
 # Large data and raw files (re-downloadable via prepare_offline_cache.py)
-data/halueval_qa_raw.json
-checkpoints/
+# data/halueval_qa_raw.json
+# checkpoints/
 
 # Temporary / test scripts
 test_*.py
