@@ -17,8 +17,15 @@ token.txt
 .env*
 *.pem
 *.key
+
+# Explanatory Guides and Documentation
 BEGINNER_GUIDE_HALLEVAL_DETECTION.md
 PROJECT_EXPLANATION.md
+EVALUATION_METRICS_EXPLAINED.md
+PREDICTIVE_ENTROPY_EXPLAINED.md
+TASK1_IMPLEMENTATION.md
+TASK2_IMPLEMENTATION.md
+TASK3_IMPLEMENTATION.md
 
 # Large data and raw files (re-downloadable via prepare_offline_cache.py)
 # data/halueval_qa_raw.json
