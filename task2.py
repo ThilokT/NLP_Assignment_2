@@ -183,8 +183,7 @@ if not hf_token:
         with open(token_file, "r") as f:
             hf_token = f.read().strip()
 
-# if not hf_token:
-#     hf_token = "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"
+
 
 try:
     login(token=hf_token)
