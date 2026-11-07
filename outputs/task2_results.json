@@ -1,0 +1,141 @@
+{
+  "version": "optimized",
+  "llm": "google/gemma-2-2b-it",
+  "bertscore_backbone": "roberta-large",
+  "nli_model": "microsoft/deberta-large-mnli",
+  "is_potsawee_fallback": false,
+  "resampling_protocol": {
+    "N": 20,
+    "temperature": 1.2,
+    "top_p": 0.95,
+    "max_new_tokens": 64
+  },
+  "metrics": {
+    "test split (160 instances)": {
+      "SelfCheck-BERTScore (bare, primary)": {
+        "feature_key": "bertscore_inconsistency",
+        "AUC-PR": 0.512,
+        "pairwise_acc": 0.5375
+      },
+      "SelfCheck-BERTScore + question context": {
+        "feature_key": "bertscore_inconsistency_ctx",
+        "AUC-PR": 0.7116,
+        "pairwise_acc": 0.825
+      },
+      "BERTScore (max-over-samples, ablation)": {
+        "feature_key": "bertscore_inconsistency_max",
+        "AUC-PR": 0.5469,
+        "pairwise_acc": 0.6125
+      },
+      "SelfCheck-NLI (mean contradiction, primary)": {
+        "feature_key": "nli_contradiction",
+        "AUC-PR": 0.455,
+        "pairwise_acc": 0.375
+      },
+      "SelfCheck-NLI + question context": {
+        "feature_key": "nli_contradiction_ctx",
+        "AUC-PR": 0.5573,
+        "pairwise_acc": 0.5125
+      },
+      "SelfCheck-NLI (inverted entailment)": {
+        "feature_key": "nli_entailment",
+        "AUC-PR": 0.7001,
+        "pairwise_acc": 0.7375
+      },
+      "SelfCheck-NLI (max contradiction across N)": {
+        "feature_key": "nli_max_contradiction",
+        "AUC-PR": 0.5612,
+        "pairwise_acc": 0.45
+      },
+      "SelfCheck-NLI (semantic entropy proxy, std)": {
+        "feature_key": "semantic_entropy_proxy",
+        "AUC-PR": 0.5128,
+        "pairwise_acc": 0.5375
+      }
+    },
+    "train split (640 instances)": {
+      "SelfCheck-BERTScore (bare, primary)": {
+        "feature_key": "bertscore_inconsistency",
+        "AUC-PR": 0.4722,
+        "pairwise_acc": 0.4875
+      },
+      "SelfCheck-BERTScore + question context": {
+        "feature_key": "bertscore_inconsistency_ctx",
+        "AUC-PR": 0.6749,
+        "pairwise_acc": 0.7281
+      },
+      "BERTScore (max-over-samples, ablation)": {
+        "feature_key": "bertscore_inconsistency_max",
+        "AUC-PR": 0.5153,
+        "pairwise_acc": 0.5375
+      },
+      "SelfCheck-NLI (mean contradiction, primary)": {
+        "feature_key": "nli_contradiction",
+        "AUC-PR": 0.4984,
+        "pairwise_acc": 0.4688
+      },
+      "SelfCheck-NLI + question context": {
+        "feature_key": "nli_contradiction_ctx",
+        "AUC-PR": 0.5774,
+        "pairwise_acc": 0.5844
+      },
+      "SelfCheck-NLI (inverted entailment)": {
+        "feature_key": "nli_entailment",
+        "AUC-PR": 0.7486,
+        "pairwise_acc": 0.7812
+      },
+      "SelfCheck-NLI (max contradiction across N)": {
+        "feature_key": "nli_max_contradiction",
+        "AUC-PR": 0.5782,
+        "pairwise_acc": 0.5437
+      },
+      "SelfCheck-NLI (semantic entropy proxy, std)": {
+        "feature_key": "semantic_entropy_proxy",
+        "AUC-PR": 0.4906,
+        "pairwise_acc": 0.5062
+      }
+    },
+    "full dataset (800 instances)": {
+      "SelfCheck-BERTScore (bare, primary)": {
+        "feature_key": "bertscore_inconsistency",
+        "AUC-PR": 0.4765,
+        "pairwise_acc": 0.4975
+      },
+      "SelfCheck-BERTScore + question context": {
+        "feature_key": "bertscore_inconsistency_ctx",
+        "AUC-PR": 0.68,
+        "pairwise_acc": 0.7475
+      },
+      "BERTScore (max-over-samples, ablation)": {
+        "feature_key": "bertscore_inconsistency_max",
+        "AUC-PR": 0.5193,
+        "pairwise_acc": 0.5525
+      },
+      "SelfCheck-NLI (mean contradiction, primary)": {
+        "feature_key": "nli_contradiction",
+        "AUC-PR": 0.4853,
+        "pairwise_acc": 0.45
+      },
+      "SelfCheck-NLI + question context": {
+        "feature_key": "nli_contradiction_ctx",
+        "AUC-PR": 0.5721,
+        "pairwise_acc": 0.57
+      },
+      "SelfCheck-NLI (inverted entailment)": {
+        "feature_key": "nli_entailment",
+        "AUC-PR": 0.7363,
+        "pairwise_acc": 0.7725
+      },
+      "SelfCheck-NLI (max contradiction across N)": {
+        "feature_key": "nli_max_contradiction",
+        "AUC-PR": 0.5736,
+        "pairwise_acc": 0.525
+      },
+      "SelfCheck-NLI (semantic entropy proxy, std)": {
+        "feature_key": "semantic_entropy_proxy",
+        "AUC-PR": 0.4929,
+        "pairwise_acc": 0.5125
+      }
+    }
+  }
+}
