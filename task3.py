@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """
-Task 3 Colab: Optimized Stacked Ensemble Meta-Classifier Suite
-Adapted for Google Colab
+Task 3: Optimized Stacked Ensemble Meta-Classifier Suite
+Adapted for Google Colab / Kaggle / Local
 NLP Assignment 2 - Project 7 (HaluEval QA)
 
 Features Loaded Dynamically:
-1. checkpoints/task1_logprobs_entropy.json (Original baseline features)
-2. checkpoints/task1_v2_features.json (Knowledge-conditioned features)
-3. checkpoints/task2_selfcheck_scores.json (Original SelfCheck features)
-4. checkpoints/task2_v2_scores.json (Advanced SelfCheck features)
+1. checkpoints/task1_features.json (Knowledge-conditioned features)
+2. checkpoints/task2_scores.json (Advanced SelfCheck features)
 
 Models Evaluated:
 - Logistic Regression (L2 regularized, tuned over C)
@@ -68,13 +66,16 @@ for d in [DATA_DIR, CKPT_DIR, OUT_DIR]:
 split_path   = os.path.join(DATA_DIR, "train_test_split.json")
 sampled_path = os.path.join(DATA_DIR, "halueval_qa_sampled.json")
 
-t1_path      = os.path.join(CKPT_DIR, "task1_logprobs_entropy.json")
-t1v2_path    = os.path.join(CKPT_DIR, "task1_v2_features.json")
-t2_path      = os.path.join(CKPT_DIR, "task2_selfcheck_scores.json")
-t2v2_path    = os.path.join(CKPT_DIR, "task2_v2_scores.json")
+t1_primary   = os.path.join(CKPT_DIR, "task1_features.json")
+t1_legacy    = os.path.join(CKPT_DIR, "task1_v2_features.json")
+t2_primary   = os.path.join(CKPT_DIR, "task2_scores.json")
+t2_legacy    = os.path.join(CKPT_DIR, "task2_v2_scores.json")
+
+t1_path = t1_primary if os.path.exists(t1_primary) else t1_legacy
+t2_path = t2_primary if os.path.exists(t2_primary) else t2_legacy
 
 print("=" * 75)
-print("   TASK 3 (COLAB): OPTIMIZED STACKED ENSEMBLE META-CLASSIFIER")
+print("   TASK 3: OPTIMIZED STACKED ENSEMBLE META-CLASSIFIER")
 print("=" * 75)
 
 if not os.path.exists(split_path):
@@ -82,10 +83,8 @@ if not os.path.exists(split_path):
     sys.exit(1)
 
 ckpt_status = {
-    "Task 1 (Original)": (t1_path, os.path.exists(t1_path)),
-    "Task 1 (v2 Knowledge-Conditioned)": (t1v2_path, os.path.exists(t1v2_path)),
-    "Task 2 (Original SelfCheck)": (t2_path, os.path.exists(t2_path)),
-    "Task 2 (v2 Advanced SelfCheck)": (t2v2_path, os.path.exists(t2v2_path)),
+    "Task 1 Features": (t1_path, os.path.exists(t1_path)),
+    "Task 2 Scores":   (t2_path, os.path.exists(t2_path)),
 }
 
 available_count = sum(1 for _, (_, exists) in ckpt_status.items() if exists)
@@ -96,7 +95,7 @@ if available_count == 0:
 
 
 # ============================================================
-# 2. LOAD SPLITS & ALL AVAILABLE FEATURE FILES
+# 2. LOAD SPLITS & FEATURE FILES
 # ============================================================
 split_info = json.load(open(split_path, "r", encoding="utf-8"))
 train_ids = split_info["train_sample_ids"]
@@ -113,35 +112,28 @@ def load_json_graceful(path, name):
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            print(f"  ✓ Found & loaded: {name:<35s} ({len(data)} items from {os.path.basename(path)})")
+            print(f"  ✓ Found & loaded: {name:<25s} ({len(data)} items from {os.path.basename(path)})")
             return data
         except Exception as e:
             print(f"  ⚠️ Error parsing {path}: {e}")
             return None
     else:
-        print(f"  ⚠️ Notice: {name:<35s} NOT found ({os.path.basename(path)}). Skipping.")
+        print(f"  ⚠️ Notice: {name:<25s} NOT found ({os.path.basename(path)}). Skipping.")
         return None
 
-t1   = load_json_graceful(t1_path, "Task 1 (Original)")
-t1v2 = load_json_graceful(t1v2_path, "Task 1 (v2 Knowledge-Conditioned)")
-t2   = load_json_graceful(t2_path, "Task 2 (Original SelfCheck)")
-t2v2 = load_json_graceful(t2v2_path, "Task 2 (v2 Advanced SelfCheck)")
+t1_data = load_json_graceful(t1_path, "Task 1 Features")
+t2_data = load_json_graceful(t2_path, "Task 2 Scores")
 
 
 # ============================================================
 # 3. BUILD UNIFIED FEATURE TABLE
 # ============================================================
-T1_ORIG_FEATS = ["mean_log_prob", "mean_entropy"]
-T1_V2_FEATS = [
+T1_FEATS = [
     "kc_mean_log_prob", "kc_mean_entropy", "kc_sum_log_prob",
     "kc_log_prob_variance", "kc_entropy_variance", "kc_min_log_prob",
     "kc_max_entropy", "kc_perplexity", "kc_answer_token_count"
 ]
-T2_ORIG_FEATS = [
-    "bertscore_inconsistency", "bertscore_inconsistency_max",
-    "nli_contradiction", "nli_contradiction_ctx"
-]
-T2_V2_FEATS = [
+T2_FEATS = [
     "bertscore_inconsistency", "bertscore_inconsistency_ctx", "bertscore_inconsistency_max",
     "nli_contradiction", "nli_contradiction_ctx", "nli_entailment", "nli_max_contradiction",
     "semantic_entropy_proxy"
@@ -154,15 +146,9 @@ def build_dataframe(ids, desc="Split"):
         for answer_type, lab in (("right_answer", 0), ("hallucinated_answer", 1)):
             r = {"sample_id": sid, "label": lab}
 
-            if t1 is not None and sid_str in t1:
-                ans = t1[sid_str].get(answer_type, {})
-                for k in T1_ORIG_FEATS:
-                    if k in ans and ans[k] is not None:
-                        r[k] = float(ans[k])
-
-            if t1v2 is not None and sid_str in t1v2:
-                ans = t1v2[sid_str].get(answer_type, {})
-                for k in T1_V2_FEATS:
+            if t1_data is not None and sid_str in t1_data:
+                ans = t1_data[sid_str].get(answer_type, {})
+                for k in T1_FEATS:
                     short_k = k[3:] if k.startswith("kc_") else k
                     if k in ans and ans[k] is not None:
                         r[k] = float(ans[k])
@@ -174,15 +160,9 @@ def build_dataframe(ids, desc="Split"):
                         if col not in r:
                             r[col] = float(v)
 
-            if t2 is not None and sid_str in t2:
-                ans = t2[sid_str].get(answer_type, {})
-                for k in T2_ORIG_FEATS:
-                    if k in ans and ans[k] is not None:
-                        r[k] = float(ans[k])
-
-            if t2v2 is not None and sid_str in t2v2:
-                ans = t2v2[sid_str].get(answer_type, {})
-                for k in T2_V2_FEATS:
+            if t2_data is not None and sid_str in t2_data:
+                ans = t2_data[sid_str].get(answer_type, {})
+                for k in T2_FEATS:
                     col = k if k.startswith("v2_") else f"v2_{k}"
                     short_k = k[3:] if k.startswith("v2_") else k
                     if k in ans and ans[k] is not None:
@@ -213,7 +193,7 @@ if not all_feature_cols:
 
 t1_feature_cols = [
     c for c in all_feature_cols
-    if c.startswith("kc_") or c in T1_ORIG_FEATS or "entropy" in c or "log_prob" in c or "perplexity" in c
+    if c.startswith("kc_") or "entropy" in c or "log_prob" in c or "perplexity" in c
 ]
 t2_feature_cols = [
     c for c in all_feature_cols
@@ -429,12 +409,12 @@ for m_label, s in [
 plt.axhline(y_test.mean(), ls=":", color="gray", lw=1.2, label=f"Random ({y_test.mean():.4f})")
 plt.xlabel("Recall", fontsize=11, fontweight="bold")
 plt.ylabel("Precision", fontsize=11, fontweight="bold")
-plt.title(f"Task 3 Colab: PR Curves on Test Set ({len(y_test)} instances)", fontsize=12, fontweight="bold")
+plt.title(f"Task 3: PR Curves on Test Set ({len(y_test)} instances)", fontsize=12, fontweight="bold")
 plt.legend(loc="lower left", fontsize=8.5)
 plt.grid(True, alpha=0.3)
 plt.tight_layout()
 
-pr_plot_path = os.path.join(OUT_DIR, "task3_v2_pr_curves.png")
+pr_plot_path = os.path.join(OUT_DIR, "task3_pr_curves.png")
 plt.savefig(pr_plot_path, dpi=200)
 plt.close()
 print(f"\n✓ PR curves plot saved to: {pr_plot_path}")
@@ -443,13 +423,13 @@ print(f"\n✓ PR curves plot saved to: {pr_plot_path}")
 # ============================================================
 # 8. SAVE DELIVERABLES
 # ============================================================
-model_out = os.path.join(OUT_DIR, "task3_v2_meta_classifier.joblib")
+model_out = os.path.join(OUT_DIR, "task3_meta_classifier.joblib")
 joblib.dump(models[best_model_name].best_estimator_, model_out)
 
-csv_out = os.path.join(OUT_DIR, "final_comparison_v2.csv")
+csv_out = os.path.join(OUT_DIR, "final_comparison.csv")
 comparison_df.to_csv(csv_out, index=False)
 
-results_json_out = os.path.join(OUT_DIR, "task3_v2_results.json")
+results_json_out = os.path.join(OUT_DIR, "task3_results.json")
 final_results = {
     "split_seed": SEED,
     "train_instances": len(train_df),

@@ -1,6 +1,0 @@
-Method,AUC-PR (test),95% CI low,95% CI high
-Best Single Feature (kc_answer_token_count),0.9801,0.9598,0.9957
-LR (All features),0.9985,0.9951,1.0
-RF (All features),0.9957,0.9875,1.0
-GBT (All features),0.9954,0.9863,1.0
-Best Ensemble (LR (All features)),0.9985,0.9951,1.0

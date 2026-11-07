@@ -1,6 +1,0 @@
-Method,AUC-PR (test),95% CI low,95% CI high
-Task 1 alone (mean entropy),0.5081,0.4621,0.587
-Task 2 alone (SelfCheck-NLI),0.5794,0.5086,0.6604
-"Task 1 features, LR",0.7702,0.6895,0.8761
-"Task 2 features, LR",0.6588,0.584,0.7585
-"Task 3 ensemble (T1+T2, LR)",0.7567,0.6744,0.8635

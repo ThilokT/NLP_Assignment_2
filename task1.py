@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Task 1 Colab: Knowledge-Conditioned Probability-Based Hallucination Detection
-Adapted for Google Colab (Free T4 GPU or better with active internet access)
+Task 1: Knowledge-Conditioned Probability-Based Hallucination Detection
+Adapted for Google Colab / Kaggle / Local
 NLP Assignment 2 - Project 7 (HaluEval QA)
 Model: google/gemma-2-2b-it
 
@@ -11,7 +11,7 @@ Optimizations:
    mean_log_prob, mean_entropy, sum_log_prob, log_prob_variance,
    entropy_variance, min_log_prob, max_entropy, perplexity, answer_token_count
 3. Online HuggingFace Model & Dataset Loading (No offline caching restrictions)
-4. Checkpointing to checkpoints/task1_v2_features.json every 25 questions
+4. Checkpointing to checkpoints/task1_features.json every 25 questions
 5. Comprehensive test-set evaluation (AUC-PR, Pairwise Accuracy, 3x3 diagnostic plots)
 """
 
@@ -65,7 +65,7 @@ for d in [DATA_DIR, CKPT_DIR, OUT_DIR]:
     os.makedirs(d, exist_ok=True)
 
 print("=" * 75)
-print("   TASK 1 (COLAB): KNOWLEDGE-CONDITIONED HALLUCINATION DETECTION")
+print("   TASK 1: KNOWLEDGE-CONDITIONED HALLUCINATION DETECTION")
 print("=" * 75)
 print(f"Working Directory: {BASE_DIR}")
 print(f"Data Directory:    {DATA_DIR}")
@@ -328,26 +328,29 @@ print(f"  Hallucinated answer: Mean LP={feat_h0['mean_log_prob']:.4f}, Entropy={
 # ============================================================
 # 5. FORCED DECODING OVER ALL QA PAIRS
 # ============================================================
-TASK1_V2_CKPT = os.path.join(CKPT_DIR, "task1_v2_features.json")
+TASK1_CKPT = os.path.join(CKPT_DIR, "task1_features.json")
+# Fallback to legacy checkpoint if task1_features.json does not exist yet
+if not os.path.exists(TASK1_CKPT) and os.path.exists(os.path.join(CKPT_DIR, "task1_v2_features.json")):
+    TASK1_CKPT = os.path.join(CKPT_DIR, "task1_v2_features.json")
 
-if os.path.exists(TASK1_V2_CKPT):
-    with open(TASK1_V2_CKPT, "r") as f:
-        task1_v2_results = json.load(f)
+if os.path.exists(TASK1_CKPT):
+    with open(TASK1_CKPT, "r") as f:
+        task1_results = json.load(f)
     
     # Check if checkpoint from a prior run contains corrupt NaNs
     has_nan = any(
         math.isnan(float(r["right_answer"].get("mean_entropy", 0.0))) or
         math.isnan(float(r["hallucinated_answer"].get("mean_entropy", 0.0)))
-        for r in task1_v2_results.values()
+        for r in task1_results.values()
     )
     if has_nan:
         print("\n⚠ Detected NaN values in existing checkpoint from previous run.")
         print("  Invalidating cache and re-running forced decoding with float32 Categorical entropy...")
-        task1_v2_results = {}
+        task1_results = {}
     else:
-        print(f"\n✓ Resuming from checkpoint: {len(task1_v2_results)}/{len(sampled_data)} already processed.")
+        print(f"\n✓ Resuming from checkpoint: {len(task1_results)}/{len(sampled_data)} already processed.")
 else:
-    task1_v2_results = {}
+    task1_results = {}
     print(f"\nStarting fresh forced decoding for {len(sampled_data)} QA pairs...")
 
 start_time = time.time()
@@ -355,7 +358,7 @@ checkpoint_interval = 25
 
 for i, item in enumerate(tqdm(sampled_data, desc="Task 1 Forced Decoding")):
     sid = str(item["sample_id"])
-    if sid in task1_v2_results:
+    if sid in task1_results:
         continue
 
     k = item.get("knowledge", "")
@@ -363,7 +366,7 @@ for i, item in enumerate(tqdm(sampled_data, desc="Task 1 Forced Decoding")):
     right_feat = compute_forced_decoding_features(k, q, item["right_answer"], model, tokenizer)
     hall_feat  = compute_forced_decoding_features(k, q, item["hallucinated_answer"], model, tokenizer)
 
-    task1_v2_results[sid] = {
+    task1_results[sid] = {
         "sample_id": item["sample_id"],
         "original_id": item["id"],
         "right_answer": {
@@ -377,19 +380,19 @@ for i, item in enumerate(tqdm(sampled_data, desc="Task 1 Forced Decoding")):
     }
 
     if (i + 1) % checkpoint_interval == 0:
-        with open(TASK1_V2_CKPT, "w") as f:
-            json.dump(task1_v2_results, f, indent=2)
+        with open(TASK1_CKPT, "w") as f:
+            json.dump(task1_results, f, indent=2)
         elapsed = time.time() - start_time
-        processed = len(task1_v2_results)
+        processed = len(task1_results)
         rate = elapsed / max(processed, 1)
         remaining = (len(sampled_data) - processed) * rate
         print(f"  Checkpoint saved ({processed}/{len(sampled_data)}). Est. remaining: {remaining/60:.1f} min")
 
-with open(TASK1_V2_CKPT, "w") as f:
-    json.dump(task1_v2_results, f, indent=2)
+with open(TASK1_CKPT, "w") as f:
+    json.dump(task1_results, f, indent=2)
 
 print(f"\n✓ Forced decoding complete in {(time.time() - start_time)/60:.1f} minutes.")
-print(f"  Saved features to: {TASK1_V2_CKPT}")
+print(f"  Saved features to: {TASK1_CKPT}")
 
 
 # ============================================================
@@ -453,8 +456,8 @@ test_eval_results = {}
 train_eval_results = {}
 
 for name, key, invert, desc in FEATURES_CONFIG:
-    test_eval_results[name] = evaluate_feature(task1_v2_results, test_ids, key, invert=invert)
-    train_eval_results[name] = evaluate_feature(task1_v2_results, train_ids, key, invert=invert)
+    test_eval_results[name] = evaluate_feature(task1_results, test_ids, key, invert=invert)
+    train_eval_results[name] = evaluate_feature(task1_results, train_ids, key, invert=invert)
 
 test_neg_lp = test_eval_results["neg_mean_log_prob"]["scores"]
 test_ent    = test_eval_results["mean_entropy"]["scores"]
@@ -580,8 +583,8 @@ ax.grid(True, linestyle="--", alpha=0.4)
 
 # Plot 7: Pairwise Scatter Mean Log-Prob
 ax = axes[2, 0]
-right_lp = [task1_v2_results[str(sid)]["right_answer"]["mean_log_prob"] for sid in test_ids]
-hall_lp  = [task1_v2_results[str(sid)]["hallucinated_answer"]["mean_log_prob"] for sid in test_ids]
+right_lp = [task1_results[str(sid)]["right_answer"]["mean_log_prob"] for sid in test_ids]
+hall_lp  = [task1_results[str(sid)]["hallucinated_answer"]["mean_log_prob"] for sid in test_ids]
 correct_lp = [r > h for r, h in zip(right_lp, hall_lp)]
 ax.scatter([r for r, c in zip(right_lp, correct_lp) if c],
            [h for h, c in zip(hall_lp, correct_lp) if c],
@@ -600,8 +603,8 @@ ax.grid(True, linestyle="--", alpha=0.4)
 
 # Plot 8: Pairwise Scatter Mean Entropy
 ax = axes[2, 1]
-right_ent = [task1_v2_results[str(sid)]["right_answer"]["mean_entropy"] for sid in test_ids]
-hall_ent  = [task1_v2_results[str(sid)]["hallucinated_answer"]["mean_entropy"] for sid in test_ids]
+right_ent = [task1_results[str(sid)]["right_answer"]["mean_entropy"] for sid in test_ids]
+hall_ent  = [task1_results[str(sid)]["hallucinated_answer"]["mean_entropy"] for sid in test_ids]
 correct_ent = [h > r for r, h in zip(right_ent, hall_ent)]
 ax.scatter([r for r, c in zip(right_ent, correct_ent) if c],
            [h for h, c in zip(hall_ent, correct_ent) if c],
@@ -637,7 +640,7 @@ ax.legend(loc="lower right", fontsize=8)
 ax.grid(True, axis="x", linestyle="--", alpha=0.4)
 
 plt.tight_layout()
-plot_path = os.path.join(OUT_DIR, "task1_v2_plots.png")
+plot_path = os.path.join(OUT_DIR, "task1_plots.png")
 plt.savefig(plot_path, dpi=150, bbox_inches="tight")
 plt.close(fig)
 print(f"✓ Diagnostic plots saved to: {plot_path}")
@@ -653,24 +656,24 @@ for name in [cfg[0] for cfg in FEATURES_CONFIG] + ["combined_z"]:
     summary_auc_pr[name] = round(float(test_eval_results[name]["auc_pr"]), 4)
     summary_pairwise_acc[name] = round(float(test_eval_results[name]["pairwise_acc"]), 4)
 
-task1_v2_final = {
-    "task": "Task 1 (Colab): Knowledge-Conditioned Hallucination Detection",
+task1_final = {
+    "task": "Task 1: Knowledge-Conditioned Hallucination Detection",
     "model": MODEL_NAME,
     "prompt_template": "Context: {knowledge}\\nQuestion: {question}\\nAnswer: ",
     "sample_size": len(sampled_data),
     "random_seed": split_info["random_seed"],
     "metrics_auc_pr_test": summary_auc_pr,
     "metrics_pairwise_accuracy_test": summary_pairwise_acc,
-    "checkpoint_file": TASK1_V2_CKPT,
+    "checkpoint_file": TASK1_CKPT,
     "plot_file": plot_path,
 }
 
-results_path = os.path.join(OUT_DIR, "task1_v2_results.json")
+results_path = os.path.join(OUT_DIR, "task1_results.json")
 with open(results_path, "w") as f:
-    json.dump(task1_v2_final, f, indent=2)
+    json.dump(task1_final, f, indent=2)
 
 print(f"\n✓ Summary results saved to: {results_path}")
-print(f"✓ Checkpoint file saved to: {TASK1_V2_CKPT}")
+print(f"✓ Checkpoint file saved to: {TASK1_CKPT}")
 
 total_elapsed = time.time() - TOTAL_START_TIME
 print(f"\n⏱ TOTAL EXECUTION TIME: {int(total_elapsed//60)}m {int(total_elapsed%60)}s")

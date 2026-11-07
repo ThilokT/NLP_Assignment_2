@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Task 2 Colab: Optimized SelfCheckGPT (SelfCheck-BERTScore & SelfCheck-NLI)
-Adapted for Google Colab (Free T4 GPU or better with active internet access)
+Task 2: Optimized SelfCheckGPT (SelfCheck-BERTScore & SelfCheck-NLI)
+Adapted for Google Colab / Kaggle / Local
 NLP Assignment 2 - Project 7 (HaluEval QA)
 LLM: google/gemma-2-2b-it
 Scorers: roberta-large (BERTScore), microsoft/deberta-large-mnli (3-class NLI)
@@ -70,7 +70,7 @@ for d in [DATA_DIR, CKPT_DIR, OUT_DIR]:
     os.makedirs(d, exist_ok=True)
 
 print("=" * 75)
-print("   TASK 2 (COLAB): OPTIMIZED SELFCHECKGPT HALLUCINATION DETECTOR")
+print("   TASK 2: OPTIMIZED SELFCHECKGPT HALLUCINATION DETECTOR")
 print("=" * 75)
 print(f"Working Directory: {BASE_DIR}")
 print(f"Data Directory:    {DATA_DIR}")
@@ -196,7 +196,9 @@ except Exception as e:
 # ============================================================
 # 4. STEP 1: GENERATE STOCHASTIC RESAMPLES (N = 20, T = 1.2)
 # ============================================================
-RES_CKPT = os.path.join(CKPT_DIR, "task2_resamples_v2.json")
+RES_CKPT = os.path.join(CKPT_DIR, "task2_resamples.json")
+if not os.path.exists(RES_CKPT) and os.path.exists(os.path.join(CKPT_DIR, "task2_resamples_v2.json")):
+    RES_CKPT = os.path.join(CKPT_DIR, "task2_resamples_v2.json")
 resamples = json.load(open(RES_CKPT)) if os.path.exists(RES_CKPT) else {}
 
 N_SAMPLES      = 20
@@ -460,7 +462,9 @@ def score_candidate(question, cand, samples):
 # ============================================================
 # 7. STEP 4: SCORE ALL CANDIDATES AGAINST RESAMPLES
 # ============================================================
-SC_CKPT = os.path.join(CKPT_DIR, "task2_v2_scores.json")
+SC_CKPT = os.path.join(CKPT_DIR, "task2_scores.json")
+if not os.path.exists(SC_CKPT) and os.path.exists(os.path.join(CKPT_DIR, "task2_v2_scores.json")):
+    SC_CKPT = os.path.join(CKPT_DIR, "task2_v2_scores.json")
 task2_scores = json.load(open(SC_CKPT)) if os.path.exists(SC_CKPT) else {}
 
 print(f"\n[Step 4] SelfCheck scoring ({len(task2_scores)} already completed)...")
@@ -637,7 +641,7 @@ ax_std.legend(loc="upper right", fontsize=9)
 ax_std.grid(alpha=0.3)
 
 plt.tight_layout()
-plot_path = os.path.join(OUT_DIR, "task2_v2_plots.png")
+plot_path = os.path.join(OUT_DIR, "task2_plots.png")
 plt.savefig(plot_path, dpi=150)
 plt.close(fig)
 print(f"✓ Diagnostic plots saved to: {plot_path}")
@@ -647,7 +651,7 @@ print(f"✓ Diagnostic plots saved to: {plot_path}")
 # 10. STEP 7: SAVE SUMMARY RESULTS
 # ============================================================
 final = {
-    "version": "colab_optimized",
+    "version": "optimized",
     "llm": MODEL_NAME,
     "bertscore_backbone": "roberta-large",
     "nli_model": NLI_NAME,
@@ -661,7 +665,7 @@ final = {
     "metrics": results,
 }
 
-res_path = os.path.join(OUT_DIR, "task2_v2_results.json")
+res_path = os.path.join(OUT_DIR, "task2_results.json")
 with open(res_path, "w", encoding="utf-8") as f:
     json.dump(final, f, indent=2)
 

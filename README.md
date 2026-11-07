@@ -25,9 +25,9 @@ The code is organized to mirror the Task 1 / Task 2 / Task 3 structure:
 │   ├── halueval_qa_sampled.json  # 400 sampled QA pairs (seed 42)
 │   └── train_test_split.json     # 320 train / 80 test split (seed 42)
 ├── checkpoints/                  # Intermediate feature caches (omitted from submission zip)
-│   ├── task1_logprobs_entropy.json
+│   ├── task1_features.json
 │   ├── task2_resamples.json
-│   └── task2_selfcheck_scores.json
+│   └── task2_scores.json
 ├── outputs/                      # Metric reports, CSVs, and diagnostic figures
 │   ├── task1_results.json
 │   ├── task1_plots.png
@@ -107,17 +107,17 @@ bash run_all.sh
 ```bash
 python -u task1.py
 ```
-- **Output Checkpoint:** `checkpoints/task1_logprobs_entropy.json`
+- **Output Checkpoint:** `checkpoints/task1_features.json`
 - **Results:** `outputs/task1_results.json`, `outputs/task1_plots.png`
-- **Runtime:** ~3 minutes on an NVIDIA Tesla P100 GPU.
+- **Runtime:** ~1-2 minutes on GPU.
 
 #### Task 2: SelfCheckGPT (Sampling Consistency)
 ```bash
 python -u task2.py
 ```
-- **Output Checkpoints:** `checkpoints/task2_resamples.json`, `checkpoints/task2_selfcheck_scores.json`
+- **Output Checkpoints:** `checkpoints/task2_resamples.json`, `checkpoints/task2_scores.json`
 - **Results:** `outputs/task2_results.json`, `outputs/task2_plots.png`
-- **Runtime:** ~10 minutes on an NVIDIA Tesla P100 GPU ($N=20$ resamples $\times$ 400 questions).
+- **Runtime:** ~15-20 minutes on GPU ($N=20$ resamples $\times$ 400 questions).
 
 #### Task 3: Stacked Ensemble Meta-Classifier
 ```bash
@@ -125,7 +125,7 @@ python -u task3.py
 ```
 - **Output Model:** `outputs/task3_meta_classifier.joblib`
 - **Results:** `outputs/final_comparison.csv`, `outputs/task3_results.json`, `outputs/task3_pr_curves.png`
-- **Runtime:** ~16 seconds.
+- **Runtime:** ~30 seconds.
 
 ---
 
@@ -145,10 +145,13 @@ All stochastic operations use explicit, fixed random seeds:
 | Method | AUC-PR (Test) | 95% Bootstrap CI | Pairwise Acc. |
 | :--- | :---: | :---: | :---: |
 | **Random Baseline** | 0.5000 | — | 50.0% |
-| **Task 1: Negative Log-Prob** | 0.3378 | — | 32.5% |
-| **Task 1: Predictive Entropy** | 0.5081 | [0.4621, 0.5870] | 49.5% |
-| **Task 2: SelfCheck-BERTScore** | 0.4367 | — | 48.7% |
-| **Task 2: SelfCheck-NLI** | 0.5794 | [0.5086, 0.6604] | 52.5% |
-| **Task 3: Supervised Ensemble (T1+T2)** | **0.7567** | **[0.6744, 0.8635]** | **68.8%** |
-| **Task 3: Extended Ensemble** | **0.8549** | — | **78.1%** |
+| **Task 1: Mean Entropy** | 0.8572 | — | 90.0% |
+| **Task 1: Max Entropy** | 0.9319 | — | 95.6% |
+| **Task 1: Negative Sum Log-Prob** | 0.9794 | — | 98.8% |
+| **Task 1: Answer Token Count** | 0.9801 | [0.9598, 0.9957] | 98.8% |
+| **Task 2: SelfCheck-BERTScore (+Context)** | 0.7116 | — | 82.5% |
+| **Task 2: SelfCheck-NLI (Inverted Entailment)** | 0.7001 | — | 73.8% |
+| **Task 3: Meta-Classifier (Logistic Regression)** | **0.9985** | **[0.9951, 1.0000]** | **—** |
+| **Task 3: Meta-Classifier (Random Forest)** | **0.9957** | **[0.9875, 1.0000]** | **—** |
+| **Task 3: Meta-Classifier (Gradient Boosting)** | **0.9954** | **[0.9863, 1.0000]** | **—** |
 
