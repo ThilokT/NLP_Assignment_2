@@ -44,6 +44,25 @@ NLP_Assignment_2/
 └── README.md                # Comprehensive documentation and execution guide
 ```
 
+> [!TIP]
+> **Running from Scratch (Clean Re-run):**  
+> All tasks feature automatic incremental checkpointing: if checkpoint files already exist in `checkpoints/`, the scripts will automatically load them and skip re-computing already completed questions to save GPU time and prevent redundant API calls.  
+> If you want to re-run any task **from the very beginning (scratch)**, simply delete the corresponding checkpoint file(s) before running the script:
+> ```bash
+> # To re-run everything from scratch (Colab / Kaggle / Linux / Bash):
+> rm -f checkpoints/task1_features.json checkpoints/task2_resamples.json checkpoints/task2_scores.json
+> 
+> # To re-run only Task 1 from scratch:
+> rm -f checkpoints/task1_features.json
+> 
+> # To re-run only Task 2 from scratch:
+> rm -f checkpoints/task2_resamples.json checkpoints/task2_scores.json
+> 
+> # On Windows PowerShell:
+> Remove-Item -Path checkpoints\*.json -Force
+> ```
+
+
 ---
 
 ## Pretrained Models & Hardware
@@ -57,7 +76,7 @@ All models are open-weights and loaded directly from Hugging Face:
 | **NLI Classifier** | `microsoft/deberta-large-mnli` | DeBERTa-large (434M params) | 3-class cross-encoder contradiction/entailment (Task 2) |
 
 > [!NOTE]
-> `google/gemma-2-2b-it` is a gated model. You must accept the license terms on its [Hugging Face page](https://huggingface.co/google/gemma-2-2b-it) and generate a free Read Token.
+> `google/gemma-2-2b-it` is a gated model. You must accept the license terms on its [Hugging Face page](https://huggingface.co/google/gemma-2-2b-it) and generate a free Read Token. When running the notebooks, you can provide the token directly as an interactive prompt input, or store it in your platform's secrets manager with the label `HF_TOKEN`.
 
 **Hardware Recommendation:** NVIDIA GPU with $\ge 12$ GB VRAM (e.g., Tesla T4, Tesla P100, V100, or A100). Execution on CPU is supported as fallback.
 
@@ -96,7 +115,9 @@ Use the provided notebook [`tasks_colab.ipynb`](file:///d:/Academics/sem7/NLP/as
   ```bash
   !pip install -q transformers torch bert-score huggingface_hub accelerate pandas scikit-learn matplotlib joblib tqdm
   ```
-* **Cell 4 (Hugging Face Login):** Authenticates with your Hugging Face access token.
+* **Cell 4 (Hugging Face Login):** Authenticates with your Hugging Face access token for accessing `google/gemma-2-2b-it`. You can either:
+  * Provide the token as input when prompted interactively by `getpass`, or
+  * Add it to Google Colab **Secrets (🔑)** in the left sidebar with label `HF_TOKEN` (granting notebook access).
 * **Cell 5 (Run Task 1):** Executes forced decoding (~1-2 minutes):
   ```bash
   !python -u task1.py
@@ -105,7 +126,7 @@ Use the provided notebook [`tasks_colab.ipynb`](file:///d:/Academics/sem7/NLP/as
   ```bash
   !python -u task2.py
   ```
-  *(Checkpoints are saved every 25 questions into Google Drive; if Colab disconnects, re-running automatically resumes where it left off).*
+  *(Checkpoints are saved every 25 questions into Google Drive; if Colab disconnects, re-running automatically resumes where it left off. To re-run any task from scratch, delete its checkpoint in `checkpoints/` first).*
 * **Cell 7 (Run Task 3):** Trains and evaluates meta-classifiers (~30 seconds):
   ```bash
   !python -u task3.py
@@ -135,7 +156,9 @@ In the right sidebar under **Notebook settings**:
 * **Cell 1:** Verifies dual Tesla T4 GPUs.
 * **Cell 2:** Sets up `/kaggle/working/NLP_Assignment_2` and clones the repository.
 * **Cell 3:** Installs dependencies (`bert-score`, `transformers`, etc.).
-* **Cell 4:** Authenticates Hugging Face. (You can also save your token in Kaggle **Add-ons → Secrets** with label `HF_TOKEN`).
+* **Cell 4:** Authenticates Hugging Face for accessing `google/gemma-2-2b-it`. You can either:
+  * Provide the token as input when prompted interactively by `getpass`, or
+  * Add it to Kaggle Secrets via **Add-ons → Secrets** with label `HF_TOKEN`.
 * **Cells 5, 6, 7:** Execute Tasks sequentially:
   ```bash
   !python -u task1.py
@@ -218,11 +241,3 @@ Evaluated on the held-out test split (80 questions, 160 instances: 80 factual, 8
 
 ---
 
-## Reproducibility Checklist
-
-- [x] **Deterministic Splits:** Fixed random seed `42` (`data/train_test_split.json`).
-- [x] **No Data Leakage:** Grouped CV (`GroupKFold`) ensures factual and hallucinated counterparts of any question are strictly in the same split.
-- [x] **Self-Contained Data Loading:** Automatically downloads and prepares HaluEval QA if data files are missing.
-- [x] **Incremental Checkpointing:** Checkpoint files save every 25 questions; long runs resume seamlessly.
-- [x] **Pre-trained Serialized Models:** Trained meta-classifier is saved as a ready-to-deploy Joblib pipeline in `outputs/task3_meta_classifier.joblib`.
-- [x] **Cloud GPU Verification:** Fully tested and verified on Google Colab (Tesla T4) and Kaggle Notebooks (GPU T4 x2 / P100).
