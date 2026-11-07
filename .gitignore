@@ -18,6 +18,7 @@ token.txt
 *.pem
 *.key
 BEGINNER_GUIDE_HALLEVAL_DETECTION.md
+PROJECT_EXPLANATION.md
 
 # Large data and raw files (re-downloadable via prepare_offline_cache.py)
 # data/halueval_qa_raw.json
