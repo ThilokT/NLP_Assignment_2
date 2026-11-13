@@ -1,0 +1,8 @@
+Method,AUC-PR (test),95% CI low,95% CI high
+Best Single Feature (kc_sum_log_prob),0.9784,0.9615,0.9929
+Task 1 only: LR (T1 features),0.9875,0.9744,0.9977
+Task 2 only: LR (T2 features),0.8622,0.7884,0.9388
+LR (All features),0.9944,0.9872,0.9995
+RF (All features),0.988,0.972,0.9991
+GBT (All features),0.9942,0.9855,1.0
+Best Ensemble (GBT (All features)),0.9942,0.9855,1.0

@@ -1,0 +1,8 @@
+Method,AUC-PR (test),95% CI low,95% CI high
+Best Single Feature (v2_bertscore_inconsistency_ctx),0.7012,0.6354,0.7805
+Task 1 only: LR (mean_lp + entropy),0.6243,0.5541,0.7283
+Task 2 only: LR (4 SelfCheck features),0.7788,0.711,0.851
+LR (All 6 features),0.7795,0.7099,0.8654
+RF (All 6 features),0.8569,0.7795,0.9324
+GBT (All 6 features),0.892,0.8357,0.9431
+Best Ensemble (RF (All features)),0.8569,0.7795,0.9324

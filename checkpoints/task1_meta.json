@@ -1,0 +1,5 @@
+{
+  "model": "google/gemma-2-2b-it",
+  "prompt_template": "Context: {knowledge}\nQuestion: {question}\nAnswer:",
+  "feature_version": "v3-canonical-tokenization-bf16"
+}

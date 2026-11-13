@@ -1,0 +1,77 @@
+{
+  "split_seed": 42,
+  "train_instances": 640,
+  "test_instances": 160,
+  "features_total_count": 6,
+  "all_features": [
+    "kc_mean_log_prob",
+    "kc_mean_entropy",
+    "v2_bertscore_inconsistency",
+    "v2_bertscore_inconsistency_ctx",
+    "v2_nli_contradiction",
+    "v2_nli_contradiction_ctx"
+  ],
+  "best_single_feature": {
+    "feature": "v2_bertscore_inconsistency_ctx",
+    "test_auc_pr": 0.7012
+  },
+  "model_cv_scores": {
+    "LR (T1 features)": 0.5847,
+    "LR (T2 features)": 0.7826,
+    "LR (All features)": 0.7807,
+    "RF (All features)": 0.887,
+    "GBT (All features)": 0.8763
+  },
+  "model_test_scores": {
+    "LR (T1 features)": 0.6243,
+    "LR (T2 features)": 0.7788,
+    "LR (All features)": 0.7795,
+    "RF (All features)": 0.8569,
+    "GBT (All features)": 0.892
+  },
+  "best_overall_model": "RF (All features)",
+  "final_comparison_table": [
+    {
+      "Method": "Best Single Feature (v2_bertscore_inconsistency_ctx)",
+      "AUC-PR (test)": 0.7012,
+      "95% CI low": 0.6354,
+      "95% CI high": 0.7805
+    },
+    {
+      "Method": "Task 1 only: LR (mean_lp + entropy)",
+      "AUC-PR (test)": 0.6243,
+      "95% CI low": 0.5541,
+      "95% CI high": 0.7283
+    },
+    {
+      "Method": "Task 2 only: LR (4 SelfCheck features)",
+      "AUC-PR (test)": 0.7788,
+      "95% CI low": 0.711,
+      "95% CI high": 0.851
+    },
+    {
+      "Method": "LR (All 6 features)",
+      "AUC-PR (test)": 0.7795,
+      "95% CI low": 0.7099,
+      "95% CI high": 0.8654
+    },
+    {
+      "Method": "RF (All 6 features)",
+      "AUC-PR (test)": 0.8569,
+      "95% CI low": 0.7795,
+      "95% CI high": 0.9324
+    },
+    {
+      "Method": "GBT (All 6 features)",
+      "AUC-PR (test)": 0.892,
+      "95% CI low": 0.8357,
+      "95% CI high": 0.9431
+    },
+    {
+      "Method": "Best Ensemble (RF (All features))",
+      "AUC-PR (test)": 0.8569,
+      "95% CI low": 0.7795,
+      "95% CI high": 0.9324
+    }
+  ]
+}

@@ -1,0 +1,88 @@
+{
+  "split_seed": 42,
+  "train_instances": 640,
+  "test_instances": 160,
+  "features_total_count": 17,
+  "all_features": [
+    "kc_mean_log_prob",
+    "kc_mean_entropy",
+    "kc_sum_log_prob",
+    "kc_log_prob_variance",
+    "kc_entropy_variance",
+    "kc_min_log_prob",
+    "kc_max_entropy",
+    "kc_perplexity",
+    "kc_answer_token_count",
+    "v2_bertscore_inconsistency",
+    "v2_bertscore_inconsistency_ctx",
+    "v2_bertscore_inconsistency_max",
+    "v2_nli_contradiction",
+    "v2_nli_contradiction_ctx",
+    "v2_nli_entailment",
+    "v2_nli_max_contradiction",
+    "v2_semantic_entropy_proxy"
+  ],
+  "best_single_feature": {
+    "feature": "kc_sum_log_prob",
+    "test_auc_pr": 0.9784
+  },
+  "model_cv_scores": {
+    "LR (T1 features)": 0.9796,
+    "LR (T2 features)": 0.8357,
+    "LR (All features)": 0.98,
+    "RF (All features)": 0.9906,
+    "GBT (All features)": 0.9917
+  },
+  "model_test_scores": {
+    "LR (T1 features)": 0.9875,
+    "LR (T2 features)": 0.8622,
+    "LR (All features)": 0.9944,
+    "RF (All features)": 0.988,
+    "GBT (All features)": 0.9942
+  },
+  "best_overall_model": "GBT (All features)",
+  "final_comparison_table": [
+    {
+      "Method": "Best Single Feature (kc_sum_log_prob)",
+      "AUC-PR (test)": 0.9784,
+      "95% CI low": 0.9615,
+      "95% CI high": 0.9929
+    },
+    {
+      "Method": "Task 1 only: LR (T1 features)",
+      "AUC-PR (test)": 0.9875,
+      "95% CI low": 0.9744,
+      "95% CI high": 0.9977
+    },
+    {
+      "Method": "Task 2 only: LR (T2 features)",
+      "AUC-PR (test)": 0.8622,
+      "95% CI low": 0.7884,
+      "95% CI high": 0.9388
+    },
+    {
+      "Method": "LR (All features)",
+      "AUC-PR (test)": 0.9944,
+      "95% CI low": 0.9872,
+      "95% CI high": 0.9995
+    },
+    {
+      "Method": "RF (All features)",
+      "AUC-PR (test)": 0.988,
+      "95% CI low": 0.972,
+      "95% CI high": 0.9991
+    },
+    {
+      "Method": "GBT (All features)",
+      "AUC-PR (test)": 0.9942,
+      "95% CI low": 0.9855,
+      "95% CI high": 1.0
+    },
+    {
+      "Method": "Best Ensemble (GBT (All features))",
+      "AUC-PR (test)": 0.9942,
+      "95% CI low": 0.9855,
+      "95% CI high": 1.0
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "model": "google/gemma-2-2b-it",
+  "N": 20,
+  "temperature": 1.2,
+  "top_p": 0.95,
+  "top_k": 0,
+  "max_new_tokens": 64,
+  "gen_seed": 42,
+  "nli_model": "microsoft/deberta-large-mnli",
+  "bertscore_backbone": "roberta-large"
+}

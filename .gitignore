@@ -1,0 +1,58 @@
+# Environments and virtualenvs
+.venv/
+env/
+venv/
+ENV/
+
+# Python & Jupyter cache
+__pycache__/
+*.py[cod]
+*$py.class
+.ipynb_checkpoints/
+
+# Secrets and credentials
+token
+token.txt
+*.env
+.env*
+*.pem
+*.key
+
+# Explanatory Guides and Documentation
+BEGINNER_GUIDE_HALLEVAL_DETECTION.md
+PROJECT_EXPLANATION.md
+EVALUATION_METRICS_EXPLAINED.md
+PREDICTIVE_ENTROPY_EXPLAINED.md
+TASK1_IMPLEMENTATION.md
+TASK2_IMPLEMENTATION.md
+TASK3_IMPLEMENTATION.md
+PRESENTATION_SCRIPT.md
+
+# Large data and raw files (re-downloadable via prepare_offline_cache.py)
+# data/halueval_qa_raw.json
+# checkpoints/
+
+# Temporary / test scripts
+test_*.py
+setup_code_structure.py
+extracted_submission/
+
+# Model weights
+*.pt
+*.bin
+*.safetensors
+*.onnx
+
+# Logs and debug output
+*_output.txt
+*.log
+
+# Large archives
+*.zip
+
+# OS files
+.DS_Store
+Thumbs.db
+
+BEGINNER_GUIDE.md
+notebookc4269d7118 (1).ipynb

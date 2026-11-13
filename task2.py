@@ -1,0 +1,762 @@
+#!/usr/bin/env python3
+"""
+Task 2: Optimized SelfCheckGPT (SelfCheck-BERTScore & SelfCheck-NLI)
+Adapted for Google Colab / Kaggle / Local
+NLP Assignment 2 - Project 7 (HaluEval QA)
+LLM: google/gemma-2-2b-it
+Scorers: roberta-large (BERTScore), microsoft/deberta-large-mnli (3-class NLI)
+
+Optimizations:
+1. Higher sampling temperature (T=1.2, top_p=0.95, max_new_tokens=64) for richer sample diversity.
+2. 3-class NLI model (microsoft/deberta-large-mnli) with empirical auto-detection of ENT/CON classes.
+   Graceful fallback to potsawee/deberta-v3-large-mnli if needed.
+3. Question-prepended BERTScore giving rich context to candidate and resample comparisons.
+4. Expanded feature suite (8 features per candidate):
+   - bertscore_inconsistency: 1 - mean(F1) bare
+   - bertscore_inconsistency_ctx: 1 - mean(F1) question-prepended
+   - bertscore_inconsistency_max: 1 - max(F1) bare
+   - nli_contradiction: mean P(contradiction) bare
+   - nli_contradiction_ctx: mean P(contradiction) with question context
+   - nli_entailment: 1 - mean P(entailment) bare (inverted entailment)
+   - nli_max_contradiction: max P(contradiction) across resamples
+   - semantic_entropy_proxy: std of contradiction probabilities (model inconsistency)
+5. Robust checkpointing every 25 questions and evaluation on held-out test split (160 instances).
+"""
+
+import gc
+import json
+import os
+import random
+import sys
+import time
+import urllib.request
+
+# Ensure immediate unbuffered output
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True)
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(line_buffering=True)
+
+TOTAL_START_TIME = time.time()
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from sklearn.metrics import average_precision_score, precision_recall_curve
+import torch
+from tqdm import tqdm
+from transformers import AutoModelForCausalLM, AutoModelForSequenceClassification, AutoTokenizer
+from huggingface_hub import login
+
+
+# ============================================================
+# 1. DIRECTORY SETUP
+# ============================================================
+_curr = os.path.dirname(os.path.abspath(__file__))
+if os.path.basename(os.path.dirname(_curr)) == "code":
+    BASE_DIR = os.path.abspath(os.path.join(_curr, "..", ".."))
+elif os.path.basename(_curr) == "code":
+    BASE_DIR = os.path.abspath(os.path.join(_curr, ".."))
+else:
+    BASE_DIR = _curr
+
+DATA_DIR = os.path.join(BASE_DIR, "data")
+CKPT_DIR = os.path.join(BASE_DIR, "checkpoints")
+OUT_DIR  = os.path.join(BASE_DIR, "outputs")
+
+for d in [DATA_DIR, CKPT_DIR, OUT_DIR]:
+    os.makedirs(d, exist_ok=True)
+
+print("=" * 75)
+print("   TASK 2: OPTIMIZED SELFCHECKGPT HALLUCINATION DETECTOR")
+print("=" * 75)
+print(f"Working Directory: {BASE_DIR}")
+print(f"Data Directory:    {DATA_DIR}")
+print(f"Checkpoints:       {CKPT_DIR}")
+print(f"Outputs:           {OUT_DIR}")
+
+
+# ============================================================
+# 2. DATASET VERIFICATION & LOADING
+# ============================================================
+sampled_path = os.path.join(DATA_DIR, "halueval_qa_sampled.json")
+split_path   = os.path.join(DATA_DIR, "train_test_split.json")
+raw_path     = os.path.join(DATA_DIR, "halueval_qa_raw.json")
+
+RANDOM_SEED = 42
+SAMPLE_SIZE = 400
+
+if not os.path.exists(sampled_path) or not os.path.exists(split_path):
+    print("\n[Data Setup] Required dataset files not found. Initializing dataset...")
+    if os.path.exists(raw_path):
+        print(f"  Loading raw data from cached {raw_path}...")
+        with open(raw_path, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+        if content.startswith("["):
+            raw_data = json.loads(content)
+        else:
+            raw_data = []
+            for idx, line in enumerate(content.splitlines()):
+                line = line.strip()
+                if line:
+                    item = json.loads(line)
+                    raw_data.append({
+                        "id": idx,
+                        "knowledge": item.get("knowledge", ""),
+                        "question": item["question"],
+                        "right_answer": item["right_answer"],
+                        "hallucinated_answer": item["hallucinated_answer"],
+                    })
+    else:
+        url = "https://raw.githubusercontent.com/RUCAIBox/HaluEval/main/data/qa_data.json"
+        print(f"  Downloading HaluEval QA dataset from GitHub: {url}...")
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req) as response:
+            raw_text = response.read().decode("utf-8")
+
+        raw_json_data = []
+        for line in raw_text.strip().splitlines():
+            line = line.strip()
+            if line:
+                raw_json_data.append(json.loads(line))
+
+        raw_data = []
+        for idx, item in enumerate(raw_json_data):
+            raw_data.append({
+                "id": idx,
+                "knowledge": item.get("knowledge", ""),
+                "question": item["question"],
+                "right_answer": item["right_answer"],
+                "hallucinated_answer": item["hallucinated_answer"],
+            })
+
+        with open(raw_path, "w", encoding="utf-8") as f:
+            json.dump(raw_data, f, indent=2, ensure_ascii=False)
+
+    random.seed(RANDOM_SEED)
+    sampled_data = random.sample(raw_data, SAMPLE_SIZE)
+    for i, item in enumerate(sampled_data):
+        item["sample_id"] = i
+
+    with open(sampled_path, "w", encoding="utf-8") as f:
+        json.dump(sampled_data, f, indent=2, ensure_ascii=False)
+
+    indices = list(range(len(sampled_data)))
+    random.shuffle(indices)
+    split_point = int(0.8 * len(sampled_data))
+    train_ids = sorted(indices[:split_point])
+    test_ids  = sorted(indices[split_point:])
+
+    split_info = {
+        "random_seed": RANDOM_SEED,
+        "sample_size": len(sampled_data),
+        "train_size": len(train_ids),
+        "test_size": len(test_ids),
+        "train_sample_ids": train_ids,
+        "test_sample_ids": test_ids,
+    }
+
+    with open(split_path, "w", encoding="utf-8") as f:
+        json.dump(split_info, f, indent=2)
+else:
+    print("\n✓ Found existing sampled data and train/test split.")
+    with open(sampled_path, "r", encoding="utf-8") as f:
+        sampled_data = json.load(f)
+    with open(split_path, "r", encoding="utf-8") as f:
+        split_info = json.load(f)
+    train_ids = split_info["train_sample_ids"]
+    test_ids  = split_info["test_sample_ids"]
+
+all_ids = sorted(train_ids + test_ids)
+print(f"  Total QA pairs: {len(sampled_data)} | Train: {len(train_ids)} | Test: {len(test_ids)}")
+
+
+# ============================================================
+# 3. HUGGING FACE AUTHENTICATION
+# ============================================================
+hf_token = os.environ.get("HF_TOKEN", None)
+if not hf_token:
+    token_file = os.path.join(BASE_DIR, "token.txt")
+    if os.path.exists(token_file):
+        with open(token_file, "r") as f:
+            hf_token = f.read().strip()
+
+
+
+if hf_token:
+    try:
+        login(token=hf_token)
+        print("✓ Hugging Face authenticated.")
+    except Exception as e:
+        print(f"Hugging Face login note: {e}")
+else:
+    print("⚠ No HF_TOKEN env var or token.txt found. Gemma is a gated model; "
+          "set HF_TOKEN (never hardcode it) if the download fails.")
+
+
+# ============================================================
+# 4. STEP 1: GENERATE STOCHASTIC RESAMPLES (N = 20, T = 1.2)
+# ============================================================
+N_SAMPLES      = 20
+TEMPERATURE    = 1.2   # NOTE: assignment suggests 1.0; this deviation must be stated in the report
+TOP_P          = 0.95
+TOP_K          = 0
+MAX_NEW_TOKENS = 64
+GEN_SEED       = 42
+MODEL_NAME     = "google/gemma-2-2b-it"
+
+RES_CKPT = os.path.join(CKPT_DIR, "task2_resamples.json")
+RES_META = os.path.join(CKPT_DIR, "task2_resamples_meta.json")
+RES_META_CUR = {
+    "model": MODEL_NAME, "N": N_SAMPLES, "temperature": TEMPERATURE,
+    "top_p": TOP_P, "top_k": TOP_K, "max_new_tokens": MAX_NEW_TOKENS, "gen_seed": GEN_SEED,
+}
+
+resamples = {}
+if os.path.exists(RES_CKPT):
+    if os.path.exists(RES_META):
+        with open(RES_META, "r") as f:
+            _stored = json.load(f)
+        if _stored == RES_META_CUR:
+            resamples = json.load(open(RES_CKPT))
+        else:
+            print("\n⚠ Cached resamples were generated with different settings "
+                  f"({_stored}). Ignoring cache and regenerating.")
+    else:
+        # Legacy cache from earlier runs of this script (no metadata): adopt it, but say so.
+        print("\n⚠ Cached resamples have no metadata; assuming they were generated with the current "
+              "settings (N=20, T=1.2, top_p=0.95). Delete checkpoints/task2_resamples.json to force regeneration.")
+        resamples = json.load(open(RES_CKPT))
+with open(RES_META, "w") as f:
+    json.dump(RES_META_CUR, f, indent=2)
+
+if len(resamples) < len(sampled_data):
+    print(f"\n[Step 1] Loading LLM ({MODEL_NAME}) for resampling...")
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    model = AutoModelForCausalLM.from_pretrained(
+        MODEL_NAME,
+        torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,  # Gemma-2 is fragile in fp16
+        device_map="auto" if torch.cuda.is_available() else None,
+    )
+    model.eval()
+    if torch.cuda.is_available():
+        print(f"✓ LLM loaded on GPU: {torch.cuda.get_device_name(0)} | Memory: {torch.cuda.memory_allocated()/1e9:.2f} GB")
+
+    def build_prompt(question):
+        msg = ("Answer the following question with a short, direct answer "
+               "(a phrase or one sentence). Do not explain.\n\n"
+               f"Question: {question}")
+        return tokenizer.apply_chat_template([{"role": "user", "content": msg}],
+                                             tokenize=False, add_generation_prompt=True)
+
+    @torch.no_grad()
+    def resample_answers(question, seed):
+        enc = tokenizer(build_prompt(question), return_tensors="pt", add_special_tokens=False).to(model.device)
+        torch.manual_seed(seed)
+        out = model.generate(
+            **enc,
+            do_sample=True,
+            temperature=TEMPERATURE,
+            top_p=TOP_P,
+            top_k=TOP_K,
+            max_new_tokens=MAX_NEW_TOKENS,
+            num_return_sequences=N_SAMPLES,
+            pad_token_id=tokenizer.pad_token_id,
+        )
+        texts = tokenizer.batch_decode(out[:, enc["input_ids"].shape[1]:], skip_special_tokens=True)
+        cleaned = []
+        for t in texts:
+            t = t.strip().split("\n")[0].strip()
+            cleaned.append(t if t else "N/A")
+        return cleaned
+
+    print(f"\nResampling {len(sampled_data)} questions (N={N_SAMPLES}, T={TEMPERATURE}, top_p={TOP_P})...")
+    print(f"  Resuming with {len(resamples)} already cached.")
+    t0 = time.time()
+    for i, item in enumerate(tqdm(sampled_data, desc="Resampling")):
+        sid = str(item["sample_id"])
+        if sid in resamples:
+            continue
+        resamples[sid] = resample_answers(item["question"], GEN_SEED + item["sample_id"])
+        if (i + 1) % 25 == 0:
+            with open(RES_CKPT, "w", encoding="utf-8") as f:
+                json.dump(resamples, f, ensure_ascii=False)
+            print(f"  Resample checkpoint saved ({len(resamples)}/{len(sampled_data)})")
+
+    with open(RES_CKPT, "w", encoding="utf-8") as f:
+        json.dump(resamples, f, ensure_ascii=False)
+    print(f"✓ Resampling completed in {(time.time()-t0)/60:.1f} minutes | Saved: {RES_CKPT}")
+
+    # Free LLM memory before loading BERTScore and NLI models
+    del model, tokenizer
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        print(f"  GPU memory after freeing LLM: {torch.cuda.memory_allocated()/1e9:.2f} GB")
+else:
+    print(f"\n✓ Found complete resamples checkpoint ({len(resamples)} questions): {RES_CKPT}")
+
+
+# ============================================================
+# 5. STEP 2: LOAD SCORERS (BERTScore & DeBERTa NLI)
+# ============================================================
+device_str = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"\n[Step 2] Loading BERTScore (roberta-large) & NLI models on {device_str}...")
+
+from bert_score import BERTScorer
+
+bert_scorer = BERTScorer(
+    model_type="roberta-large",
+    lang="en",
+    rescale_with_baseline=False,
+    device=device_str,
+)
+print("✓ Loaded BERTScorer: roberta-large")
+
+# Try loading microsoft/deberta-large-mnli (3-class), fallback to potsawee/deberta-v3-large-mnli
+NLI_NAME = None
+is_potsawee = False
+
+try:
+    NLI_CANDIDATE = "microsoft/deberta-large-mnli"
+    print(f"Loading NLI model: {NLI_CANDIDATE}...")
+    nli_tok = AutoTokenizer.from_pretrained(NLI_CANDIDATE)
+    nli_model = AutoModelForSequenceClassification.from_pretrained(NLI_CANDIDATE).to(device_str).eval()
+    NLI_NAME = NLI_CANDIDATE
+    is_potsawee = False
+    print(f"✓ Loaded 3-class NLI model: {NLI_NAME}")
+except Exception as e:
+    print(f"⚠ Could not load {NLI_CANDIDATE} ({e}), trying fallback...")
+    NLI_CANDIDATE = "potsawee/deberta-v3-large-mnli"
+    nli_tok = AutoTokenizer.from_pretrained(NLI_CANDIDATE, use_fast=False)
+    nli_model = AutoModelForSequenceClassification.from_pretrained(NLI_CANDIDATE).to(device_str).eval()
+    NLI_NAME = NLI_CANDIDATE
+    is_potsawee = True
+    print(f"✓ Fallback model loaded: {NLI_NAME}")
+
+id2label = {int(k): v.lower() for k, v in nli_model.config.id2label.items()}
+num_classes = nli_model.config.num_labels
+print(f"  NLI num_labels: {num_classes} | Config id2label: {id2label}")
+
+ENT = next((k for k, v in id2label.items() if "entail" in v), 0)
+CON = next((k for k, v in id2label.items() if "contra" in v), 2 if num_classes > 2 else 1)
+
+test_premises = [
+    "A dog is happily running across the green lawn in the park.",
+    "A dog is happily running across the green lawn in the park."
+]
+test_hypotheses = [
+    "An animal is active and outdoors.",
+    "There are no animals anywhere and the park is empty."
+]
+
+test_tok_args = {
+    "return_tensors": "pt",
+    "padding": True,
+    "truncation": True,
+    "max_length": 128,
+}
+if is_potsawee:
+    test_tok_args["return_token_type_ids"] = False
+
+test_enc = nli_tok(test_premises, test_hypotheses, **test_tok_args)
+if is_potsawee:
+    test_enc.pop("token_type_ids", None)
+    vocab_size = getattr(nli_model.config, "vocab_size", 128100)
+    if "input_ids" in test_enc:
+        test_enc["input_ids"] = torch.clamp(test_enc["input_ids"], min=0, max=vocab_size - 1)
+
+test_enc = {k: v.to(device_str) for k, v in test_enc.items()}
+with torch.no_grad():
+    probe_logits = nli_model(**test_enc).logits
+
+empirical_ent = int(torch.argmax(probe_logits[0]).item())
+empirical_con = int(torch.argmax(probe_logits[1]).item())
+print(f"  Empirical validation -> Entailment idx: {empirical_ent}, Contradiction idx: {empirical_con}")
+
+config_has_names = (
+    any("entail" in v for v in id2label.values()) and any("contra" in v for v in id2label.values())
+)
+if config_has_names:
+    # Trust the model config; the one-sentence probe is only a sanity check and must not override it.
+    if (empirical_ent, empirical_con) != (ENT, CON):
+        print(f"  ⚠ Probe disagrees with config labels (probe ENT/CON = {empirical_ent}/{empirical_con}, "
+              f"config = {ENT}/{CON}). Keeping config indices.")
+else:
+    if empirical_ent == empirical_con:
+        raise RuntimeError("NLI config has no entailment/contradiction labels and the probe could not "
+                           "distinguish them; cannot determine class indices.")
+    ENT, CON = empirical_ent, empirical_con
+    print("  Config labels uninformative; using probe-derived indices.")
+
+print(f"✓ Active NLI indices -> ENT: {ENT}, CON: {CON}")
+
+
+# ============================================================
+# 6. STEP 3: SCORING FUNCTIONS
+# ============================================================
+@torch.no_grad()
+def compute_nli_probs(premises, hypotheses, bs=32):
+    p_contra = []
+    p_entail = []
+    vocab_size = getattr(nli_model.config, "vocab_size", 128100)
+
+    for i in range(0, len(premises), bs):
+        b_prem = premises[i:i+bs]
+        b_hyp  = hypotheses[i:i+bs]
+
+        tok_kwargs = {
+            "return_tensors": "pt",
+            "padding": True,
+            "truncation": True,
+            "max_length": 256,
+        }
+        if is_potsawee:
+            tok_kwargs["return_token_type_ids"] = False
+
+        enc = nli_tok(b_prem, b_hyp, **tok_kwargs)
+
+        if is_potsawee:
+            enc.pop("token_type_ids", None)
+            if "input_ids" in enc:
+                enc["input_ids"] = torch.clamp(enc["input_ids"], min=0, max=vocab_size - 1)
+
+        enc = {k: v.to(device_str) for k, v in enc.items()}
+        logits = nli_model(**enc).logits
+        num_c = logits.shape[-1]
+
+        if num_c >= 3:
+            probs = torch.softmax(logits, dim=-1)
+            b_con = probs[:, CON].cpu().tolist()
+            b_ent = probs[:, ENT].cpu().tolist()
+        else:
+            ent_idx = min(ENT, num_c - 1)
+            con_idx = min(CON, num_c - 1)
+            two = torch.stack([logits[:, ent_idx], logits[:, con_idx]], dim=-1)
+            probs_two = torch.softmax(two, dim=-1)
+            b_ent = probs_two[:, 0].cpu().tolist()
+            b_con = probs_two[:, 1].cpu().tolist()
+
+        p_contra.extend(b_con)
+        p_entail.extend(b_ent)
+
+    return p_contra, p_entail
+
+
+def bertscore_f1(cands, refs, bs=64):
+    _, _, F = bert_scorer.score(cands, refs, batch_size=bs)
+    return F.tolist()
+
+
+def score_candidate(question, cand, samples):
+    n_samples = len(samples)
+    cand_list = [cand] * n_samples
+
+    # 1. Bare BERTScore comparison
+    f1_bare = np.array(bertscore_f1(cand_list, samples, bs=64), dtype=np.float64)
+    bs_inconsistency = float(1.0 - np.mean(f1_bare))
+    bs_inconsistency_max = float(1.0 - np.max(f1_bare))
+
+    # 2. Context-prepended BERTScore comparison
+    cand_ctx = [f"{question} {cand}"] * n_samples
+    refs_ctx = [f"{question} {s}" for s in samples]
+    f1_ctx = np.array(bertscore_f1(cand_ctx, refs_ctx, bs=64), dtype=np.float64)
+    bs_inconsistency_ctx = float(1.0 - np.mean(f1_ctx))
+
+    # 3. Bare NLI comparison
+    contra_bare, entail_bare = compute_nli_probs(samples, cand_list, bs=32)
+    contra_bare = np.array(contra_bare, dtype=np.float64)
+    entail_bare = np.array(entail_bare, dtype=np.float64)
+
+    nli_contra_mean = float(np.mean(contra_bare))
+    nli_contra_max = float(np.max(contra_bare))
+    nli_contra_std = float(np.std(contra_bare))
+    nli_entail_inverted = float(1.0 - np.mean(entail_bare))
+
+    # 4. Context-prepended NLI comparison
+    contra_ctx, _ = compute_nli_probs(refs_ctx, cand_ctx, bs=32)
+    contra_ctx = np.array(contra_ctx, dtype=np.float64)
+    nli_contra_ctx_mean = float(np.mean(contra_ctx))
+
+    return {
+        "bertscore_inconsistency": bs_inconsistency,
+        "bertscore_inconsistency_ctx": bs_inconsistency_ctx,
+        "bertscore_inconsistency_max": bs_inconsistency_max,
+        "nli_contradiction": nli_contra_mean,
+        "nli_contradiction_ctx": nli_contra_ctx_mean,
+        "nli_entailment": nli_entail_inverted,
+        "nli_max_contradiction": nli_contra_max,
+        "semantic_entropy_proxy": nli_contra_std,
+    }
+
+
+# ============================================================
+# 7. STEP 4: SCORE ALL CANDIDATES AGAINST RESAMPLES
+# ============================================================
+SC_CKPT = os.path.join(CKPT_DIR, "task2_scores.json")
+SC_META = os.path.join(CKPT_DIR, "task2_scores_meta.json")
+SC_META_CUR = {**RES_META_CUR, "nli_model": NLI_NAME, "bertscore_backbone": "roberta-large"}
+
+task2_scores = {}
+if os.path.exists(SC_CKPT):
+    if os.path.exists(SC_META):
+        with open(SC_META, "r") as f:
+            _stored_sc = json.load(f)
+        if _stored_sc == SC_META_CUR:
+            task2_scores = json.load(open(SC_CKPT))
+        else:
+            print("\n⚠ Cached SelfCheck scores were computed with different settings/models. "
+                  "Ignoring cache and rescoring.")
+    else:
+        print("\n⚠ Cached SelfCheck scores have no metadata; assuming they match the current settings. "
+              "Delete checkpoints/task2_scores.json to force rescoring.")
+        task2_scores = json.load(open(SC_CKPT))
+with open(SC_META, "w") as f:
+    json.dump(SC_META_CUR, f, indent=2)
+
+print(f"\n[Step 4] SelfCheck scoring ({len(task2_scores)} already completed)...")
+t0 = time.time()
+
+for i, item in enumerate(tqdm(sampled_data, desc="SelfCheck scoring")):
+    sid = str(item["sample_id"])
+    if sid in task2_scores:
+        continue
+
+    s, q = resamples[sid], item["question"]
+
+    r = score_candidate(q, item["right_answer"], s)
+    r["label"] = 0
+
+    h = score_candidate(q, item["hallucinated_answer"], s)
+    h["label"] = 1
+
+    task2_scores[sid] = {
+        "sample_id": item["sample_id"],
+        "original_id": item["id"],
+        "right_answer": r,
+        "hallucinated_answer": h,
+    }
+
+    if (i + 1) % 25 == 0:
+        with open(SC_CKPT, "w", encoding="utf-8") as f:
+            json.dump(task2_scores, f, indent=1)
+        print(f"  Scoring checkpoint saved ({len(task2_scores)}/{len(sampled_data)})")
+
+with open(SC_CKPT, "w", encoding="utf-8") as f:
+    json.dump(task2_scores, f, indent=1)
+print(f"✓ Scoring finished in {(time.time()-t0)/60:.1f} minutes | Saved: {SC_CKPT}")
+
+
+# ============================================================
+# 8. STEP 5: AUC-PR & PAIRWISE ACCURACY EVALUATION
+# ============================================================
+def _collect_raw(ids, key):
+    y, s = [], []
+    for sid in ids:
+        r = task2_scores[str(sid)]
+        for t, lab in (("right_answer", 0), ("hallucinated_answer", 1)):
+            y.append(lab)
+            s.append(r[t][key])
+    return np.array(y, dtype=np.int32), np.array(s, dtype=np.float64)
+
+ALL_KEYS = [
+    "bertscore_inconsistency", "bertscore_inconsistency_ctx", "bertscore_inconsistency_max",
+    "nli_contradiction", "nli_contradiction_ctx", "nli_entailment",
+    "nli_max_contradiction", "semantic_entropy_proxy",
+]
+
+# Paper-reproduction baselines must strictly retain their defined direction:
+# Step 1: 1 - max(BERTScore F1) (higher inconsistency = hallucination)
+# Step 2: P(contradiction) (higher contradiction = hallucination)
+# Adaptations like nli_entailment already explicitly capture inverted signals.
+SPEC_MANDATED_T2_KEYS = {
+    "bertscore_inconsistency",
+    "bertscore_inconsistency_ctx",
+    "bertscore_inconsistency_max",
+    "nli_contradiction",
+    "nli_contradiction_ctx",
+    "nli_entailment",
+    "nli_max_contradiction",
+}
+
+SIGN = {}
+for _k in ALL_KEYS:
+    if _k in SPEC_MANDATED_T2_KEYS:
+        SIGN[_k] = 1.0
+    else:
+        _y, _s = _collect_raw(train_ids, _k)
+        SIGN[_k] = 1.0 if _s[_y == 1].mean() >= _s[_y == 0].mean() else -1.0
+        if SIGN[_k] < 0:
+            print(f"  [direction] '{_k}' is reversed on the train split; negating it for evaluation.")
+
+def collect(ids, key):
+    y, s = _collect_raw(ids, key)
+    return y, s * SIGN.get(key, 1.0)
+
+def pairwise_acc(ids, key):
+    sg = SIGN.get(key, 1.0)
+    vals = []
+    for i in ids:
+        h = sg * task2_scores[str(i)]["hallucinated_answer"][key]
+        r = sg * task2_scores[str(i)]["right_answer"][key]
+        vals.append(1.0 if h > r else (0.5 if h == r else 0.0))  # ties = 0.5, same as Task 1
+    return float(np.mean(vals))
+
+KEYS = {
+    "SelfCheck-BERTScore (bare, mean)":             "bertscore_inconsistency",
+    "SelfCheck-BERTScore + question context":       "bertscore_inconsistency_ctx",
+    "SelfCheck-BERTScore (max, assignment spec)":   "bertscore_inconsistency_max",
+    "SelfCheck-NLI (mean contradiction, primary)":  "nli_contradiction",
+    "SelfCheck-NLI + question context":             "nli_contradiction_ctx",
+    "SelfCheck-NLI (inverted entailment)":          "nli_entailment",
+    "SelfCheck-NLI (max contradiction across N)":   "nli_max_contradiction",
+    "SelfCheck-NLI (semantic entropy proxy, std)":  "semantic_entropy_proxy",
+}
+
+results = {}
+print("\n" + "=" * 78)
+print("   TASK 2 RESULTS — AUC-PR & PAIRWISE ACCURACY")
+print("=" * 78)
+
+splits_to_eval = [
+    ("test split (160 instances)", test_ids),
+    ("train split (640 instances)", train_ids),
+    ("full dataset (800 instances)", all_ids),
+]
+
+for split_name, ids in splits_to_eval:
+    print(f"\n=== {split_name} ===")
+    results[split_name] = {}
+    rows = []
+    for name, key in KEYS.items():
+        y, s = collect(ids, key)
+        ap = average_precision_score(y, s)
+        pw = pairwise_acc(ids, key)
+        results[split_name][name] = {"feature_key": key, "direction": int(SIGN[key]),
+                                     "AUC-PR": round(float(ap), 4), "pairwise_acc": round(pw, 4)}
+        rows.append({"Feature / Method": name, "AUC-PR": f"{ap:.4f}", "Pairwise Acc": f"{pw:.4f}"})
+        print(f"  {name:46s} AUC-PR = {ap:.4f}   pairwise acc = {pw:.3f}")
+
+    df_res = pd.DataFrame(rows)
+    print(f"\nSummary Table [{split_name}]:")
+    print(df_res.to_string(index=False))
+
+
+# ============================================================
+# 9. STEP 6: DIAGNOSTIC PLOTS
+# ============================================================
+print("\nGenerating diagnostic plots...")
+fig, axes = plt.subplots(2, 4, figsize=(22, 10))
+
+dist_features = [
+    ("SelfCheck-BERTScore (bare)", "bertscore_inconsistency"),
+    ("SelfCheck-BERTScore (context)", "bertscore_inconsistency_ctx"),
+    ("SelfCheck-NLI (contradiction bare)", "nli_contradiction"),
+    ("SelfCheck-NLI (contradiction ctx)", "nli_contradiction_ctx"),
+]
+
+for col, (title, key) in enumerate(dist_features):
+    ax = axes[0, col]
+    y, s = collect(all_ids, key)
+    ax.hist(s[y == 0], bins=25, alpha=0.6, color="forestgreen", density=True, label="Right (0)")
+    ax.hist(s[y == 1], bins=25, alpha=0.6, color="crimson", density=True, label="Hallucinated (1)")
+    ax.set_title(f"{title}\nDistribution", fontsize=11, fontweight="bold")
+    ax.set_xlabel("Hallucination Score")
+    ax.set_ylabel("Density")
+    ax.legend(loc="upper right", fontsize=9)
+    ax.grid(alpha=0.3)
+
+ax_bs = axes[1, 0]
+y_test_bs, _ = collect(test_ids, "bertscore_inconsistency")
+ax_bs.axhline(y_test_bs.mean(), ls="--", color="gray", label=f"Random ({y_test_bs.mean():.2f})")
+bs_keys = [
+    ("BERTScore (bare)", "bertscore_inconsistency", "blue"),
+    ("BERTScore (ctx)", "bertscore_inconsistency_ctx", "darkorange"),
+    ("BERTScore (max)", "bertscore_inconsistency_max", "purple"),
+]
+for label, key, color in bs_keys:
+    y_eval, s_eval = collect(test_ids, key)
+    p, r, _ = precision_recall_curve(y_eval, s_eval)
+    ap = average_precision_score(y_eval, s_eval)
+    ax_bs.plot(r, p, lw=2, color=color, label=f"{label} ({ap:.3f})")
+ax_bs.set_title("BERTScore Variants — Test PR Curves", fontsize=11, fontweight="bold")
+ax_bs.set_xlabel("Recall")
+ax_bs.set_ylabel("Precision")
+ax_bs.legend(loc="lower left", fontsize=8)
+ax_bs.grid(alpha=0.3)
+
+ax_nli = axes[1, 1]
+y_test_nli, _ = collect(test_ids, "nli_contradiction")
+ax_nli.axhline(y_test_nli.mean(), ls="--", color="gray", label=f"Random ({y_test_nli.mean():.2f})")
+nli_keys = [
+    ("NLI Contra (bare)", "nli_contradiction", "red"),
+    ("NLI Contra (ctx)", "nli_contradiction_ctx", "magenta"),
+    ("NLI Inverted Entail", "nli_entailment", "navy"),
+    ("NLI Max Contra", "nli_max_contradiction", "brown"),
+    ("Semantic Entropy (std)", "semantic_entropy_proxy", "teal"),
+]
+for label, key, color in nli_keys:
+    y_eval, s_eval = collect(test_ids, key)
+    p, r, _ = precision_recall_curve(y_eval, s_eval)
+    ap = average_precision_score(y_eval, s_eval)
+    ax_nli.plot(r, p, lw=1.8, color=color, label=f"{label} ({ap:.3f})")
+ax_nli.set_title("NLI Variants — Test PR Curves", fontsize=11, fontweight="bold")
+ax_nli.set_xlabel("Recall")
+ax_nli.set_ylabel("Precision")
+ax_nli.legend(loc="lower left", fontsize=7.5)
+ax_nli.grid(alpha=0.3)
+
+ax_ent = axes[1, 2]
+y, s = collect(all_ids, "nli_entailment")
+ax_ent.hist(s[y == 0], bins=25, alpha=0.6, color="forestgreen", density=True, label="Right (0)")
+ax_ent.hist(s[y == 1], bins=25, alpha=0.6, color="crimson", density=True, label="Hallucinated (1)")
+ax_ent.set_title("NLI Inverted Entailment\n(1 - P(entailment))", fontsize=11, fontweight="bold")
+ax_ent.set_xlabel("Score")
+ax_ent.legend(loc="upper left", fontsize=9)
+ax_ent.grid(alpha=0.3)
+
+ax_std = axes[1, 3]
+y, s = collect(all_ids, "semantic_entropy_proxy")
+ax_std.hist(s[y == 0], bins=25, alpha=0.6, color="forestgreen", density=True, label="Right (0)")
+ax_std.hist(s[y == 1], bins=25, alpha=0.6, color="crimson", density=True, label="Hallucinated (1)")
+ax_std.set_title("Semantic Entropy Proxy\n(Std of Contradiction Probs)", fontsize=11, fontweight="bold")
+ax_std.set_xlabel("Score (Std Dev)")
+ax_std.legend(loc="upper right", fontsize=9)
+ax_std.grid(alpha=0.3)
+
+plt.tight_layout()
+plot_path = os.path.join(OUT_DIR, "task2_plots.png")
+plt.savefig(plot_path, dpi=150)
+plt.close(fig)
+print(f"✓ Diagnostic plots saved to: {plot_path}")
+
+
+# ============================================================
+# 10. STEP 7: SAVE SUMMARY RESULTS
+# ============================================================
+final = {
+    "version": "optimized",
+    "llm": MODEL_NAME,
+    "bertscore_backbone": "roberta-large",
+    "nli_model": NLI_NAME,
+    "is_potsawee_fallback": is_potsawee,
+    "resampling_protocol": {
+        "N": N_SAMPLES,
+        "temperature": TEMPERATURE,
+        "top_p": TOP_P,
+        "max_new_tokens": MAX_NEW_TOKENS,
+    },
+    "metrics": results,
+}
+
+res_path = os.path.join(OUT_DIR, "task2_results.json")
+with open(res_path, "w", encoding="utf-8") as f:
+    json.dump(final, f, indent=2)
+
+print(f"✓ Final results saved to: {res_path}")
+
+total_elapsed = time.time() - TOTAL_START_TIME
+print(f"\n⏱ TOTAL EXECUTION TIME: {int(total_elapsed//60)}m {int(total_elapsed%60)}s")
+print("✓ Task 2 complete!")

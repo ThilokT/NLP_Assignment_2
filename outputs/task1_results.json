@@ -1,0 +1,34 @@
+{
+  "task": "Task 1: Knowledge-Conditioned Hallucination Detection",
+  "model": "google/gemma-2-2b-it",
+  "prompt_template": "Context: {knowledge}\nQuestion: {question}\nAnswer:",
+  "feature_version": "v3-canonical-tokenization-bf16",
+  "sample_size": 400,
+  "random_seed": 42,
+  "metrics_auc_pr_test": {
+    "neg_mean_log_prob": 0.6225,
+    "mean_entropy": 0.6245,
+    "perplexity": 0.6225,
+    "neg_sum_log_prob": 0.9784,
+    "neg_min_log_prob": 0.8898,
+    "max_entropy": 0.8192,
+    "log_prob_variance": 0.7712,
+    "entropy_variance": 0.7359,
+    "answer_token_count": 0.9754,
+    "combined_z": 0.6297
+  },
+  "metrics_pairwise_accuracy_test": {
+    "neg_mean_log_prob": 0.675,
+    "mean_entropy": 0.7,
+    "perplexity": 0.675,
+    "neg_sum_log_prob": 0.975,
+    "neg_min_log_prob": 0.9,
+    "max_entropy": 0.7688,
+    "log_prob_variance": 0.775,
+    "entropy_variance": 0.7625,
+    "answer_token_count": 0.9875,
+    "combined_z": 0.725
+  },
+  "checkpoint_file": "/kaggle/working/NLP_Assignment_2/checkpoints/task1_features.json",
+  "plot_file": "/kaggle/working/NLP_Assignment_2/outputs/task1_plots.png"
+}
